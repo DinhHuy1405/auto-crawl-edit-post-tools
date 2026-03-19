@@ -1,8 +1,8 @@
 {
   "jdownloader": {
-    "email": "nguyendinhhuy14052000@gmail.com",
-    "password": "hug3Lock77Z_@",
-    "device_name": "JDownloader@nguyendinhhuy"
+    "email": "your_email@example.com",
+    "password": "your_password",
+    "device_name": "your_device_name"
   },
   "directories": {
     "download_dir": "/Users/nguyendinhhuy/Downloads/FacebookVideos",

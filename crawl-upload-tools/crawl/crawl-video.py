@@ -13,6 +13,14 @@ import time
 import json
 from pathlib import Path
 from myjdapi import Myjdapi
+from dotenv import load_dotenv
+
+# Load environment variables
+env_path = os.path.join(os.path.dirname(__file__), '../../../.env')
+if not os.path.exists(env_path):
+    env_path = os.path.join(os.path.dirname(__file__), '../../.env')
+
+load_dotenv(env_path)
 
 # ==================== CONFIG LOADER ====================
 def load_config():
@@ -73,75 +81,140 @@ def connect_to_jdownloader(email, password, device_name):
         print(f"❌ Lỗi kết nối JDownloader: {e}")
         return None, None
 
-def send_youtube_video_to_jdownloader(device, video_url, video_title, download_dir):
-    """Gửi YouTube video đến JDownloader để tải"""
+def send_youtube_video_to_jdownloader(device, video_url, download_dir):
+    """
+    Gửi YouTube video đến JDownloader để tải.
+    LƯU Ý: JDownloader sẽ tự đổi packageName thành tên video thật,
+    nên ta dùng folder-based polling thay vì package name matching.
+    """
     try:
-        safe_title = sanitize_filename(video_title)
-        package_name = f"YT_{safe_title}_{int(time.time())}"
-        
         print(f"📥 Gửi link: {video_url}")
-        
-        # Gửi link về JDownloader
+
+        # Snapshot uuid hiện có trong linkgrabber trước khi gửi
+        try:
+            before_lg = {p['uuid'] for p in device.linkgrabber.query_packages([{'uuid': True}])}
+        except Exception:
+            before_lg = set()
+
+        # Gửi link về JDownloader — autostart=False để ta tự move
         device.linkgrabber.add_links([{
-            "autostart": True,
+            "autostart": False,
             "links": video_url,
-            "packageName": package_name,
             "extractPassword": "",
             "priority": "DEFAULT",
             "downloadPassword": "",
             "destinationFolder": download_dir
         }])
-        
-        print(f"✅ Gửi thành công: {package_name}")
-        time.sleep(2)
-        
-        # Chuyển sang hàng download
-        packages = device.linkgrabber.query_packages()
-        package_ids = [pkg['uuid'] for pkg in packages if pkg.get('name') == package_name]
-        
-        if package_ids:
-            device.linkgrabber.move_to_downloadlist([], package_ids)
-            print(f"✅ Chuyển vào hàng download")
-            return package_name
-        else:
-            print(f"⚠️ Link có thể đã được xử lý")
-            return package_name
-            
+
+        # Chờ JDownloader parse link và tìm package mới (tối đa 30s)
+        new_uuid = None
+        for attempt in range(6):
+            time.sleep(5)
+            try:
+                lg_packages = device.linkgrabber.query_packages([{'name': True, 'uuid': True}])
+                new_pkgs = [p for p in lg_packages if p['uuid'] not in before_lg]
+                if new_pkgs:
+                    new_uuid = new_pkgs[0]['uuid']
+                    new_name = new_pkgs[0].get('name', '?')
+                    device.linkgrabber.move_to_downloadlist([], [new_uuid])
+                    print(f"✅ Đã move sang download queue: {new_name}")
+                    return new_uuid
+                print(f"   ⏳ Chờ JDownloader parse link... ({(attempt+1)*5}s)")
+            except Exception as e:
+                print(f"   ⚠️ Lỗi query: {e}")
+
+        print(f"⚠️ Không tìm thấy package mới trong linkgrabber sau 30s")
+        return None
+
     except Exception as e:
         print(f"❌ Lỗi gửi link: {e}")
         return None
 
-def wait_for_downloads_complete(device, timeout=3600):
-    """Chờ tất cả download hoàn tất"""
-    print(f"⏳ Chờ download hoàn tất (timeout: {timeout}s)...")
+def wait_for_folder_downloads(download_folders, timeout=3600):
+    """
+    Chờ JDownloader download xong bằng cách poll file system.
+    Mỗi folder cần có ít nhất 1 file .mp4 và không còn file .part/.crdownload/.tmp
+    """
+    VIDEO_EXTS = {'.mp4', '.mkv', '.mov', '.webm', '.avi'}
+    TEMP_EXTS  = {'.part', '.crdownload', '.tmp', '.download', '.jd', '.jdtmp'}
+
+    print(f"⏳ Chờ JDownloader download vào {len(download_folders)} folder(s)... (timeout: {timeout}s)")
+    start_time = time.time()
+    last_status = ""
+
+    # Cho JDownloader 15s để bắt đầu
+    time.sleep(15)
+
+    while time.time() - start_time < timeout:
+        done = []
+        downloading = []
+        empty = []
+
+        for folder in download_folders:
+            if not os.path.isdir(folder):
+                empty.append(folder)
+                continue
+            all_files = list(Path(folder).rglob('*'))
+            has_video = any(f.suffix.lower() in VIDEO_EXTS for f in all_files if f.is_file())
+            has_temp  = any(f.suffix.lower() in TEMP_EXTS  for f in all_files if f.is_file())
+
+            if has_video and not has_temp:
+                done.append(folder)
+            elif has_temp or (has_video and has_temp):
+                downloading.append(folder)
+            else:
+                empty.append(folder)
+
+        status = f"📥 Done: {len(done)} | Downloading: {len(downloading)} | Waiting: {len(empty)} / {len(download_folders)}"
+        if status != last_status:
+            print(status)
+            last_status = status
+
+        if len(done) >= len(download_folders):
+            print("✅ Tất cả videos đã download xong!")
+            return True
+
+        # Không còn downloading và đã chờ > 60s → có thể JDL đang chờ start
+        if not downloading and time.time() - start_time > 60:
+            # Nếu vẫn có folder empty sau 3 phút → bỏ qua
+            if time.time() - start_time > 180:
+                print(f"⚠️ Timeout chờ folder — done={len(done)}/{len(download_folders)}, tiếp tục...")
+                return len(done) > 0
+
+        time.sleep(15)
+
+    print(f"❌ Timeout {timeout}s — done={len(done)}/{len(download_folders)}")
+    return False
+
+
+def wait_for_downloads_complete(device, expected_packages=None, timeout=3600):
+    """Legacy: chờ qua JDownloader API (ít tin cậy hơn folder-based)"""
+    print(f"⏳ Chờ download hoàn tất qua API (timeout: {timeout}s)...")
     start_time = time.time()
     last_status = None
-    
+
+    time.sleep(10)
+
     while time.time() - start_time < timeout:
         try:
             downloads = device.downloads.query_packages()
-            if not downloads:
-                print("✅ Không có download nào đang chạy")
-                return True
-            
-            running = [d for d in downloads if not d.get('finished', True)]
-            finished = [d for d in downloads if d.get('finished', True) and not d.get('stopped', False)]
-            
+            running  = [d for d in downloads if not d.get('finished', False)]
+            finished = [d for d in downloads if d.get('finished', False)]
+
             status_str = f"📥 Running: {len(running)} | Finished: {len(finished)}"
             if status_str != last_status:
                 print(status_str)
                 last_status = status_str
-            
+
             if not running:
-                print("✅ Tất cả download hoàn tất")
+                print("✅ Không còn task đang chạy")
                 return True
-            
-            time.sleep(5)
-            
+
+            time.sleep(15)
         except Exception as e:
             print(f"⚠️ Lỗi: {e}")
-            time.sleep(5)
-    
+            time.sleep(15)
+
     print("❌ Timeout")
     return False
 
@@ -294,13 +367,14 @@ def download_video_and_transcript(url, title, video_id, date_folder, jd_device=N
     print(f"📥 Đang tải: {title}")
     
     success = False
+    package_name = None
     
     # Strategy 1: Gửi qua JDownloader nếu có
     if not success and jd_device:
         try:
             print(f"  🔗 Gửi qua JDownloader...")
-            package = send_youtube_video_to_jdownloader(jd_device, url, title, save_path)
-            if package:
+            package_name = send_youtube_video_to_jdownloader(jd_device, url, save_path)
+            if package_name:
                 success = True
                 print(f"✅ Đã gửi JDownloader: {title}")
         except Exception as e:
@@ -313,11 +387,21 @@ def download_video_and_transcript(url, title, video_id, date_folder, jd_device=N
             cmd = [
                 'yt-dlp',
                 '--no-warnings',
-                '-f', '18/22/best',
+                '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                '--merge-output-format', 'mp4',
                 '-o', f'{save_path}/{safe_title}.%(ext)s',
                 '--no-part',
-                '-q',
-            ]
+                '--no-continue',
+                '--no-progress',
+                '--retries', '3',
+                '--socket-timeout', '15',
+                '--fragment-retries', '5',
+                # Tải subtitle tiếng Việt (auto-generated nếu không có manual)
+                '--write-sub',
+                '--write-auto-sub',
+                '--sub-lang', 'vi',
+                '--sub-format', 'vtt',
+                ]
             cmd.append(url)
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -332,10 +416,15 @@ def download_video_and_transcript(url, title, video_id, date_folder, jd_device=N
     
     if not success:
         print(f"⏭️ Bỏ qua - không thể tải được")
+        
+    return package_name
 
 def download_videos_of_channels(api_key, channels, target_date, min_duration=180, root_save_folder="", jd_device=None):
     date_folder = root_save_folder
     os.makedirs(date_folder, exist_ok=True)
+    jd_packages = []
+    jd_folders = []
+
     for channel_input in channels:
         channel_id = get_channel_id(api_key, channel_input)
         if not channel_id:
@@ -346,28 +435,36 @@ def download_videos_of_channels(api_key, channels, target_date, min_duration=180
             continue
         for video in videos:
             url = f"https://www.youtube.com/watch?v={video['video_id']}"
-            download_video_and_transcript(url, video['title'], video['video_id'], date_folder, jd_device)
+            safe_title = sanitize_filename(video['title'])
+            folder_name = f"{safe_title} [{video['video_id']}]"
+            video_folder = os.path.join(date_folder, folder_name)
+            pkg = download_video_and_transcript(url, video['title'], video['video_id'], date_folder, jd_device)
+            if pkg:
+                jd_packages.append(pkg)
+                jd_folders.append(video_folder)
+
+    return jd_packages, jd_folders
 
 # ==================== SỬ DỤNG TỰ ĐỘNG ====================
 
 # Cấu hình JDownloader
-JD_EMAIL = 'nguyendinhhuy14052000@gmail.com'
-JD_PASSWORD = 'hug3Lock77Z_@'
-JD_DEVICE = 'JDownloader@nguyendinhhuy'
+JD_EMAIL = os.getenv('JD_EMAIL')
+JD_PASSWORD = os.getenv('JD_PASSWORD')
+JD_DEVICE = os.getenv('JD_DEVICE')
 # USE_JDOWNLOADER is now loaded from config.json above
 
-channels = [
-    # "Củ Đậu Story",
-    "BLV Anh Quân Discovery",
-    # "KHỐI CÊ",
-    # "Tuyền Văn Hóa",
-    # "@battlecry.tinhaykhong",
-    # "BLV Trung Đàm Discovery"
-]
+# Load channels từ config (chỉ lấy những channel enabled=true)
+_channels_cfg = CRAWLER_CONFIG.get('channels', [])
+channels = [ch['id'] for ch in _channels_cfg if ch.get('enabled', True)]
 
-# channels = ["@bbooks-channel"]
+if not channels:
+    print("⚠️ Không có channel nào được enable trong config.json! Workflow có thể không chạy được.")
+    # Fallback to BLV Anh Quân Discovery only if totally forced
+    # channels = ["BLV Anh Quân Discovery"]
 
-api_key = "AIzaSyCV44jPjpiuUZ0efWM6KDmfo-o0yon3e0o"
+print(f"📺 Channels sẽ crawl ({len(channels)}): {', '.join(channels)}")
+
+api_key = os.getenv('YOUTUBE_API_KEY')
 root_save_folder = OUTPUT_DIR  # Use config value instead of hardcoded
 # csv_file = "/Users/nguyendinhhuy/Desktop/Personal Project/auto-videos-genixtool/modules/crawl/date.csv"
 
@@ -394,7 +491,7 @@ if target_date:
     print("Đang chạy ngày:", target_date, " - folder:", main_save_folder)
 
     # 1. Download video via JDownloader
-    download_videos_of_channels(
+    submitted_packages, submitted_folders = download_videos_of_channels(
         api_key,
         channels,
         target_date,
@@ -403,10 +500,12 @@ if target_date:
         jd_device=jd_device
     )
 
-    # 2. Nếu dùng JDownloader, chờ download hoàn tất
-    if jd_device:
-        print("\n⏳ Chờ JDownloader hoàn tất download...")
-        wait_for_downloads_complete(jd_device, timeout=3600)
+    # 2. Nếu dùng JDownloader, chờ download hoàn tất bằng cách poll folder
+    if jd_device and submitted_folders:
+        print(f"\n⏳ Chờ JDownloader hoàn tất {len(submitted_folders)} videos...")
+        wait_for_folder_downloads(submitted_folders, timeout=3600)
+    elif jd_device:
+        print("\n✅ Không có video mới nào được gửi tới JDownloader.")
     
     # 3. Clean toàn bộ phụ đề sau khi tải xong
     batch_clean(main_save_folder, target_date)
