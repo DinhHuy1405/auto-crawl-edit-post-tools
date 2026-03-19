@@ -1,0 +1,33 @@
+# Node.js
+node_modules/
+dist/
+*.log
+npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# App Configs / Secrets
+api-keys.json
+edit-video/.env
+# social-upload-tools/social-tool-main/.env
+
+# Temporary / Generated files
+temp_*
+videos-database.json
+videos.json
+videos.json.bak
+generated-content.json
+
+# Ignored large setup assets (audio/video)
+edit-video/assets/**/*.mp4
+edit-video/assets/**/*.mp3
+edit-video/assets/**/*.mov
+edit-video/assets/**/*.jpg
+edit-video/assets/f.mp4
+edit-video/assets/sound.mp3
+edit-video/assets/f/

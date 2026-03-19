@@ -1,0 +1,122 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║          SOCIAL MEDIA UPLOAD TOOL - QUICK COMMAND REFERENCE                ║
+║               TikTok | Threads | Facebook Automation                        ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+📍 LOCATION:
+cd /Users/nguyendinhhuy/Desktop/Personal\ Project/social-upload-tools
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 UPLOAD COMMANDS:
+
+1️⃣  UPLOAD TO ALL PLATFORMS (TikTok + Threads + Facebook):
+   node upload-all-platforms.mjs
+
+2️⃣  UPLOAD TO TIKTOK ONLY:
+   node upload-all-platforms.mjs tiktok
+
+3️⃣  UPLOAD TO THREADS ONLY:
+   node upload-all-platforms.mjs threads
+
+4️⃣  UPLOAD TO FACEBOOK ONLY:
+   node upload-all-platforms.mjs facebook
+
+5️⃣  UPLOAD TO MULTIPLE PLATFORMS:
+   node upload-all-platforms.mjs tiktok facebook
+   node upload-all-platforms.mjs tiktok threads
+   node upload-all-platforms.mjs threads facebook
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⚙️  CONFIGURATION:
+
+   Edit config.json:
+   nano config.json
+   (or open with your editor)
+
+   Settings to configure:
+   - Facebook profile ID
+   - TikTok: enable/disable comments, duets, stitches
+   - Upload timeout (for large videos)
+   - Show/hide browser window
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 MANAGE VIDEOS:
+
+   Edit videos-database.json:
+   nano videos-database.json
+   (or open with your editor)
+
+   Actions:
+   - Add new videos (set status: "ready")
+   - Check upload status (uploaded: true/false)
+   - View video IDs after upload
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📚 DOCUMENTATION:
+
+   Full guide:           cat USAGE.md
+   Commands reference:   cat COMMANDS.md
+   Quick reference:      cat QUICK_REFERENCE.md
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 QUICK WORKFLOW:
+
+   Step 1: Add videos to videos-database.json
+   Step 2: Configure config.json (if needed)
+   Step 3: Run: node upload-all-platforms.mjs
+   Step 4: Check videos-database.json for status
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✨ OPTIONAL: SETUP SHELL ALIASES (easier to remember):
+
+   First time:
+   source setup-aliases.sh
+
+   Add to ~/.zshrc or ~/.bash_profile:
+   source "/Users/nguyendinhhuy/Desktop/Personal\ Project/social-upload-tools/setup-aliases.sh"
+
+   Then use:
+   social-upload-all      # Upload to all platforms
+   social-upload-tiktok   # Upload to TikTok only
+   social-upload-threads  # Upload to Threads only
+   social-upload-facebook # Upload to Facebook only
+   social-config          # Edit config
+   social-database        # Edit videos
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🐛 TROUBLESHOOTING:
+
+   Video not uploading?
+   1. Check status = "ready" in videos-database.json
+   2. Verify file_path exists
+   3. Ensure logged into platforms
+   4. Set show_browser: true to see what's happening
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 FILES OVERVIEW:
+
+   upload-all-platforms.mjs     ← Master upload script (use this!)
+   upload-tiktok-from-json.mjs  ← TikTok only
+   upload-threads-from-json.mjs ← Threads only
+   upload-facebook-from-json.mjs← Facebook only
+   config.json                  ← Settings (edit this)
+   videos-database.json         ← Video list (edit this)
+   
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ STATUS: PRODUCTION READY
+
+All platforms working:
+✓ TikTok   - With processing completion wait
+✓ Threads  - With video transcoding timeout
+✓ Facebook - With direct profile URL
+
+═══════════════════════════════════════════════════════════════════════════════

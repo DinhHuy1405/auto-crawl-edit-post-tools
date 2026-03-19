@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run YouTube Crawl",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"crawl-video.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "run"
+		}
+	]
+}

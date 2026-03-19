@@ -1,0 +1,24 @@
+{
+  "facebook": {
+    "page_name": "Your Facebook Page",
+    "profile_id": "61576629782982"
+  },
+  "tiktok": {
+    "audience": "Everyone",
+    "enable_comments": true,
+    "enable_duet": false,
+    "enable_stitch": false
+  },
+  "threads": {
+    "enabled": true
+  },
+  "directories": {
+    "social_tool_path": "./social-tool-main"
+  },
+  "settings": {
+    "upload_timeout": 600,
+    "delay_between_videos": 0,
+    "show_browser": true,
+    "is_close_browser": false
+  }
+}

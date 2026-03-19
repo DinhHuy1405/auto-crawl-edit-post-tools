@@ -1,0 +1,24 @@
+{
+  "jdownloader": {
+    "email": "nguyendinhhuy14052000@gmail.com",
+    "password": "hug3Lock77Z_@",
+    "device_name": "JDownloader@nguyendinhhuy"
+  },
+  "directories": {
+    "download_dir": "/Users/nguyendinhhuy/Downloads/FacebookVideos",
+    "processed_dir": "/Users/nguyendinhhuy/Videos/Processed",
+    "upload_work_dir": "/Users/nguyendinhhuy/Videos/UploadWork"
+  },
+  "facebook": {
+    "default_description_template": "Crawled video #{timestamp}"
+  },
+  "settings": {
+    "video_extensions": [".mp4", ".mkv", ".avi", ".mov", ".flv"],
+    "download_timeout": 1800,
+    "upload_timeout": 3600,
+    "delay_between_videos": 60,
+    "auto_upload_enabled": false,
+    "upload_to_tiktok": false,
+    "upload_to_facebook": false
+  }
+}

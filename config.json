@@ -1,0 +1,67 @@
+{
+  "paths": {
+    "outputDir": "/Users/nguyendinhhuy/Documents/Edit Video/Thời Sự",
+    "editVideoDir": "./edit-video",
+    "socialUploadDir": "./social-upload-tools",
+    "crawlDir": "./crawl-upload-tools/crawl",
+    "templateDir": "./assets/f",
+    "publicDir": "./assets"
+  },
+  "audio": {
+    "volumes": {
+      "mainVideo": 0.0,
+      "backgroundMusic": 0.5,
+      "voiceNarration": 1.5
+    },
+    "codec": "aac",
+    "bitrate": "192k",
+    "sampleRate": 24000
+  },
+  "video": {
+    "codec": "libx264",
+    "preset": "fast",
+    "resolution": "1440p",
+    "maxDurationSec": 160
+  },
+  "templates": {
+    "mainVideo": "f.mp4",
+    "templateVideo": "f.mp4",
+    "backgroundMusic": "sound.mp3",
+    "logo": "logo.png"
+  },
+  "layout": {
+    "templateX": 0,
+    "templateY": 350,
+    "logoX": 30,
+    "logoY": 360,
+    "logoScale": "130:130"
+  },
+  "tts": {
+    "provider": "gemini",
+    "model": "gemini-2.5-pro",
+    "voice": "fenrir",
+    "language": "vi-VN",
+    "sampleRate": 24000,
+    "audioFormat": "wav",
+    "style": "news"
+  },
+  "newsGeneration": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "language": "vi-VN",
+    "type": "news",
+    "style": "news reporting",
+    "minWords": 150,
+    "maxWords": 600,
+    "tone": "professional, urgent, authoritative"
+  },
+  "crawler": {
+    "useJDownloader": true,
+    "downloadFormat": "mp4"
+  },
+  "upload": {
+    "platforms": ["tiktok", "threads", "facebook"],
+    "showBrowser": true,
+    "timeout": 30000
+  }
+}

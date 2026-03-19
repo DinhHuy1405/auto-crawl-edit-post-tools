@@ -1,0 +1,128 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║         🚀 SOCIAL MEDIA UPLOAD TOOL - START HERE 🚀                       ║
+║                                                                            ║
+║              Upload to TikTok, Threads & Facebook Automatically            ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+
+📍 QUICK START (60 SECONDS):
+
+1. Open Terminal and navigate:
+   cd /Users/nguyendinhhuy/Desktop/Personal\ Project/social-upload-tools
+
+2. First time - Edit videos-database.json with your videos:
+   nano videos-database.json
+   
+   Add a video entry:
+   {
+     "id": "video_001",
+     "type": "video",
+     "video_name": "My Video",
+     "title": "Post Title",
+     "description": "Description",
+     "file_path": "/absolute/path/to/video.mp4",
+     "status": "ready",
+     "tiktok": { "uploaded": false },
+     "threads": { "uploaded": false },
+     "facebook": { "uploaded": false }
+   }
+
+3. Run upload command:
+   node upload-all-platforms.mjs
+
+4. Watch the console for progress
+   Videos are automatically uploaded to all platforms!
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+🎯 MAIN COMMANDS:
+
+Upload to ALL platforms (TikTok + Threads + Facebook):
+  node upload-all-platforms.mjs
+
+Upload to ONE platform:
+  node upload-all-platforms.mjs tiktok
+  node upload-all-platforms.mjs threads
+  node upload-all-platforms.mjs facebook
+
+Upload to MULTIPLE platforms:
+  node upload-all-platforms.mjs tiktok facebook
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+⚙️  CONFIGURATION:
+
+Edit config.json to:
+  - Set your Facebook profile ID
+  - Configure TikTok settings (comments, duets, stitches)
+  - Adjust upload timeout for large videos
+  - Show/hide browser window during upload
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+📚 DOCUMENTATION:
+
+  RUN_COMMANDS.txt      ← Command reference (this file)
+  COMMANDS.md           ← Full guide with examples
+  USAGE.md              ← Detailed documentation
+  QUICK_REFERENCE.md    ← Quick lookup reference
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+📁 KEY FILES TO EDIT:
+
+  videos-database.json  ← Add your videos here
+  config.json           ← Configure platforms & settings
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+✅ STATUS:
+
+✓ TikTok   - Fully working
+✓ Threads  - Fully working  
+✓ Facebook - Fully working
+
+All cleanup done. Ready to use!
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+💡 NEXT STEPS:
+
+1. Edit videos-database.json - add your videos
+2. Edit config.json - set your Facebook profile ID
+3. Run: node upload-all-platforms.mjs
+4. Check videos-database.json for upload status
+5. Verify posts on each platform
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+🆘 ISSUES?
+
+- Video not uploading? Set "show_browser": true in config.json
+- Need more help? Read COMMANDS.md
+- Large videos timing out? Increase "upload_timeout" in config.json
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Ready? Run this now:
+
+  node upload-all-platforms.mjs
+
+═══════════════════════════════════════════════════════════════════════════════
