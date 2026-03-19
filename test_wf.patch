@@ -1,0 +1,27 @@
+--- app/src/app/workflow/page.tsx
++++ app/src/app/workflow/page.tsx
+@@ -1,5 +1,5 @@
+ 'use client'
+-import { useState, useRef, useCallback } from 'react'
++import { useState, useRef, useCallback, useEffect } from 'react'
+ import { cn } from '@/lib/utils'
+ import { toast } from 'sonner'
+ import {
+@@ -38,6 +38,18 @@
+   const logsEndRef = useRef<HTMLDivElement>(null)
+   const abortRef = useRef<AbortController | null>(null)
+   const startTimeRef = useRef<Record<string, number>>({})
++  
++  const [config, setConfig] = useState<any>(null)
++  useEffect(() => {
++    fetch('/api/config').then(r => r.json()).then(setConfig).catch(() => {})
++  }, [])
++
++  const updConfig = async (updates: any) => {
++    const next = { ...config, ...updates }
++    setConfig(next)
++    await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) })
++  }
+ 
+   const toggleChannel = (index: number) => {
+     setChannels(prev => prev.map((ch, i) => i === index ? { ...ch, enabled: !ch.enabled } : ch))

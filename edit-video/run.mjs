@@ -77,7 +77,7 @@ async function getMediaDurationInSeconds(filePath) {
 // ==========================================
 // 📝 TITLE IMAGE GENERATOR
 // ==========================================
-async function generateTitleImage(title, outputPath, width = 1440, height = 300) {
+async function generateTitleImage(title, outputPath, width = CONFIG.layout.titleW ?? 1440, height = CONFIG.layout.titleH ?? 300) {
     try {
         const canvas = createCanvas(width, height);
         const ctx = canvas.getContext('2d');
@@ -144,8 +144,17 @@ async function generateTitleImage(title, outputPath, width = 1440, height = 300)
 // ==========================================
 function generateFFmpegCommand(inputs, outputVideo, duration) {
     const { mainVideo, templateVideo, soundAudio, voiceAudio, logo, titleImage } = inputs;
-    const { templateX, templateY, logoX, logoY, logoScale } = CONFIG.layout;
-    const [logoW, logoH] = logoScale.split(":").map(Number);
+    const {
+        templateX, templateY,
+        templateW = 1440, templateH = -1,
+        logoX, logoY,
+        logoW: cfgLogoW, logoH: cfgLogoH, logoScale,
+        titleY = 1150, titleW = 1440, titleH = 300, titleDuration = 5,
+    } = CONFIG.layout;
+    // logoW/logoH: prefer explicit fields, fall back to logoScale string
+    const [logoW, logoH] = (cfgLogoW && cfgLogoH)
+        ? [cfgLogoW, cfgLogoH]
+        : logoScale.split(":").map(Number);
     
     const filterComplexParts = [];
     
@@ -170,9 +179,9 @@ function generateFFmpegCommand(inputs, outputVideo, duration) {
         `[voice_trimmed]volume=${voiceVol}[processed_voice]`
     );
 
-    // 3. Process Template Video (Crawled Video) EXACTLY like auto-videos-therike
+    // 3. Process Template Video (Crawled Video)
     filterComplexParts.push(
-        `[1:v]scale=1440:-1[scaled_template]`,
+        `[1:v]scale=${templateW}:${templateH}[scaled_template]`,
         `[scaled_template]split=4[orig_template][tl_blur_in][tr_blur_in][bottom_blur_in]`,
         `[tl_blur_in]gblur=sigma=30[tl_blurred_full]`,
         `[tl_blurred_full]crop=w=210:h=210:x=0:y=0[tl_blurred_cropped]`,
@@ -195,9 +204,8 @@ function generateFFmpegCommand(inputs, outputVideo, duration) {
     let nextInput = 4; // Start from input 4 (logo is at 4, title would be at 5)
     
     if (titleImage && fs.existsSync(titleImage)) {
-        // Đặt y=1200 tức là dưới video được crawl (thường nằm khoảng pixel 400-1100 tuỳ tỉ lệ).
         filterComplexParts.push(
-            `[video_with_template][${nextInput}:v]overlay=x=0:y=1150:enable='between(t,0,5)'[video_with_title]`
+            `[video_with_template][${nextInput}:v]overlay=x=0:y=${titleY}:enable='between(t,0,${titleDuration})'[video_with_title]`
         );
         videoStream = 'video_with_title';
         nextInput = 5;

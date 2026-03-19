@@ -1,0 +1,323 @@
+'use client'
+import { useState, useRef, useCallback } from 'react'
+import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+import {
+  Play, Square, RefreshCw, Terminal, RotateCcw, GitBranch,
+  CheckCircle2, XCircle, Loader2, Clock, ChevronRight,
+  AlertCircle, Layers, Plus, Link as LinkIcon
+} from 'lucide-react'
+import {
+  TikTokIcon, FacebookIcon, ThreadsIcon, YouTubeIcon,
+  YtDlpBadge, JDownloaderBadge,
+} from '@/components/platform-icons'
+
+type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped'
+
+interface Step {
+  id: string; label: string; description: string
+  status: StepStatus; duration?: number
+}
+interface LogLine { message: string; level: string; ts: string }
+
+const STEPS: Omit<Step, 'status'>[] = [
+  { id: 'crawl',          label: 'Crawl Videos',     description: 'Tải video từ YouTube hôm qua'        },
+  { id: 'news',           label: 'Generate News',     description: 'Gemini AI tạo nội dung từ subtitle'  },
+  { id: 'voice',          label: 'Generate Voice',    description: 'Gemini TTS → giọng đọc WAV'          },
+  { id: 'prepare',        label: 'Prepare Videos',    description: 'Tạo danh sách videos.json'           },
+  { id: 'render',         label: 'Render Videos',     description: 'FFmpeg trộn video + audio + overlay' },
+  { id: 'prepare-upload', label: 'Prepare Upload',    description: 'Chuẩn bị database upload'            },
+  { id: 'upload',         label: 'Upload Platforms',  description: 'Upload to platforms'                  },
+]
+
+const DEFAULT_CHANNELS = [
+  { name: 'BLV Anh Quân Discovery', enabled: true },
+  { name: 'Củ Đậu Story', enabled: false },
+  { name: 'KHỐI CÊ', enabled: false },
+  { name: 'Tuyền Văn Hóa', enabled: false },
+  { name: 'BLV Trung Đàm Discovery', enabled: false },
+]
+
+export default function WorkflowPage() {
+  const [steps, setSteps] = useState<Step[]>(STEPS.map(s => ({ ...s, status: 'pending' })))
+  const [logs, setLogs] = useState<LogLine[]>([])
+  const [isRunning, setIsRunning] = useState(false)
+  const [runId] = useState(() => `run_${Date.now()}`)
+  const [channels, setChannels] = useState(DEFAULT_CHANNELS)
+  const [manualUrl, setManualUrl] = useState('')
+  const logsEndRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const startTimeRef = useRef<Record<string, number>>({})
+
+  const toggleChannel = (index: number) => {
+    setChannels(prev => prev.map((ch, i) => i === index ? { ...ch, enabled: !ch.enabled } : ch))
+  }
+
+  const handleAddUrl = () => {
+    if (!manualUrl.trim()) return toast.error('Vui lòng nhập URL hợp lệ')
+    toast.success('Đã thêm URL vào queue tải')
+    setManualUrl('')
+  }
+
+  const addLog = useCallback((msg: string, level = 'default') => {
+    const ts = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    setLogs(prev => [...prev.slice(-600), { message: msg, level, ts }])
+    setTimeout(() => logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 30)
+  }, [])
+
+  const updStep = useCallback((id: string, status: StepStatus, dur?: number) => {
+    setSteps(prev => prev.map(s => s.id === id ? { ...s, status, duration: dur } : s))
+  }, [])
+
+  const runStep = useCallback(async (stepId: string): Promise<boolean> => {
+    updStep(stepId, 'running')
+    startTimeRef.current[stepId] = Date.now()
+    addLog(`▶ ${STEPS.find(s => s.id === stepId)?.label}`, 'info')
+    try {
+      const ctrl = new AbortController()
+      abortRef.current = ctrl
+      const res = await fetch('/api/workflow/run', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step: stepId, runId }), signal: ctrl.signal,
+      })
+      if (!res.ok || !res.body) { updStep(stepId, 'error'); return false }
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''; let ok = false
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const parts = buf.split('\n\n'); buf = parts.pop() || ''
+        for (const part of parts) {
+          const line = part.replace(/^data: /, '').trim()
+          if (!line) continue
+          try {
+            const ev = JSON.parse(line)
+            if (ev.type === 'log') addLog(ev.message, ev.level || 'default')
+            if (ev.type === 'done') {
+              ok = ev.success
+              updStep(stepId, ok ? 'done' : 'error', Math.round((Date.now() - startTimeRef.current[stepId]) / 1000))
+            }
+          } catch {}
+        }
+      }
+      return ok
+    } catch (err: unknown) {
+      if ((err as Error).name === 'AbortError') { updStep(stepId, 'skipped'); return false }
+      updStep(stepId, 'error'); addLog(`Error: ${String(err)}`, 'error'); return false
+    }
+  }, [runId, addLog, updStep])
+
+  const runFull = useCallback(async () => {
+    setIsRunning(true); setLogs([]); setSteps(STEPS.map(s => ({ ...s, status: 'pending' })))
+    addLog('Starting Full Workflow', 'info')
+    for (const step of STEPS) {
+      const ok = await runStep(step.id)
+      if (!ok) { addLog(`Stopped at: ${step.label}`, 'error'); toast.error(`Stopped at: ${step.label}`); break }
+    }
+    setIsRunning(false); addLog('Workflow finished', 'info'); toast.success('Workflow complete!')
+  }, [runStep, addLog])
+
+  const runSingle = useCallback(async (id: string) => {
+    setIsRunning(true)
+    await runStep(id)
+    setIsRunning(false)
+    toast.success(`Step completed: ${STEPS.find(s => s.id === id)?.label}`)
+  }, [runStep])
+
+  const stop = () => {
+    abortRef.current?.abort()
+    fetch(`/api/workflow/run?runId=${runId}`, { method: 'DELETE' }).catch(() => {})
+    setIsRunning(false); addLog('Stopped by user', 'warning'); toast.warning('Workflow stopped')
+  }
+
+  const reset = () => { setSteps(STEPS.map(s => ({ ...s, status: 'pending' }))); setLogs([]) }
+
+  const done = steps.filter(s => s.status === 'done').length
+  const pct = Math.round((done / STEPS.length) * 100)
+
+  const stepIcon = (s: Step) => {
+    if (s.status === 'running') return <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+    if (s.status === 'done')    return <CheckCircle2 className="w-4 h-4 text-green-500" />
+    if (s.status === 'error')   return <XCircle className="w-4 h-4 text-red-500" />
+    if (s.status === 'skipped') return <AlertCircle className="w-4 h-4 text-amber-500" />
+    return <Clock className="w-4 h-4 text-slate-300" />
+  }
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="page-title"><GitBranch className="w-5 h-5 text-blue-500" />Workflow Runner</h1>
+          <p className="page-desc">Automated pipeline: Crawl → Edit → Upload</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={reset} disabled={isRunning} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors">
+            <RotateCcw className="w-3.5 h-3.5" />Reset
+          </button>
+          {isRunning ? (
+            <button onClick={stop} className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors">
+              <Square className="w-3.5 h-3.5 fill-white" />Stop
+            </button>
+          ) : (
+            <button onClick={runFull} className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+              <Play className="w-3.5 h-3.5 fill-white" />Run Full Workflow
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Crawl Sources */}
+      <div className="section-card overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+          <YouTubeIcon className="text-red-500" size={14} />
+          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Crawl Sources</p>
+          <div className="flex-1" />
+          <YtDlpBadge />
+          <JDownloaderBadge />
+        </div>
+        <div className="p-3">
+          <div className="flex flex-wrap gap-2 mb-3">
+            {channels.map((ch, i) => (
+              <label key={i} className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors cursor-pointer",
+                ch.enabled ? "bg-red-50 border-red-200 text-red-800" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+              )}>
+                <input type="checkbox" checked={ch.enabled} onChange={() => toggleChannel(i)} className="accent-red-500 w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium">{ch.name}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+               <div className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
+                  <LinkIcon className="w-3.5 h-3.5 text-slate-400" />
+               </div>
+               <input 
+                 type="text" 
+                 value={manualUrl}
+                 onChange={(e) => setManualUrl(e.target.value)}
+                 onKeyDown={(e) => e.key === 'Enter' && handleAddUrl()}
+                 placeholder="Paste YouTube, TikTok, or FB video URL here to manual crawl..." 
+                 className="w-full h-8 pl-8 pr-3 text-[11px] bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 transition-colors"
+               />
+            </div>
+            <button onClick={handleAddUrl} className="h-8 px-3 flex items-center gap-1.5 text-[11px] font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-md transition-colors shrink-0">
+               <Plus className="w-3.5 h-3.5" /> Add URL
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="section-card p-4">
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-sm font-medium text-slate-700">Overall Progress</span>
+          <span className="text-sm font-bold text-blue-600">{done}/{STEPS.length} steps · {pct}%</span>
+        </div>
+        <div className="workflow-progress">
+          <div className="workflow-progress-fill" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-5 gap-4">
+        {/* Steps */}
+        <div className="col-span-2 section-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+            <Layers className="w-4 h-4 text-slate-400" />
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Pipeline Steps</p>
+          </div>
+          <div className="p-2 space-y-0.5">
+            {steps.map((step, i) => (
+              <div
+                key={step.id}
+                className={cn(
+                  'flex items-center gap-3 p-3 rounded-lg transition-all',
+                  step.status === 'running' ? 'step-active-pulse border border-blue-200' :
+                  step.status === 'done'    ? 'bg-green-50/60' :
+                  step.status === 'error'   ? 'bg-red-50/60' : ''
+                )}
+              >
+                <span className="text-xs font-mono text-slate-300 w-4 shrink-0">{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={cn('text-sm font-medium', step.status === 'running' ? 'text-blue-700' : 'text-slate-800')}>{step.label}</p>
+                  <p className="text-xs text-slate-400 truncate">{step.description}</p>
+                  {step.id === 'crawl' && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <YtDlpBadge />
+                      <JDownloaderBadge />
+                    </div>
+                  )}
+                  {step.id === 'upload' && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <TikTokIcon size={11} className="text-slate-400" />
+                      <FacebookIcon size={11} className="text-blue-500" />
+                      <ThreadsIcon size={11} className="text-slate-700" />
+                    </div>
+                  )}
+                  {step.duration !== undefined && <p className="text-[10px] text-slate-400 mt-0.5">{step.duration}s</p>}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {stepIcon(step)}
+                  {step.status === 'pending' && !isRunning && (
+                    <button onClick={() => runSingle(step.id)} className="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Logs */}
+        <div className="col-span-3 section-card overflow-hidden flex flex-col">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-slate-400" />
+              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Live Logs</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {isRunning && <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />}
+              <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', isRunning ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500')}>
+                {isRunning ? 'Running...' : 'Idle'}
+              </span>
+            </div>
+          </div>
+          <div className="log-viewer flex-1 h-[calc(100vh-420px)] text-[11px]">
+            {logs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full">
+                <Terminal className="w-8 h-8 text-slate-700 opacity-20 mb-2" />
+                <span className="text-slate-600">Logs will stream here when workflow runs...</span>
+              </div>
+            ) : logs.map((l, i) => (
+              <span key={i} className={cn('log-line', l.level)}>
+                {l.ts && <span className="text-slate-600 mr-2">[{l.ts}]</span>}
+                {l.message}
+              </span>
+            ))}
+            <div ref={logsEndRef} />
+          </div>
+        </div>
+      </div>
+
+      {/* Individual step runner */}
+      <div className="section-card p-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Run Individual Steps</p>
+        <div className="flex flex-wrap gap-2">
+          {STEPS.map(step => (
+            <button
+              key={step.id}
+              disabled={isRunning}
+              onClick={() => runSingle(step.id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 transition-colors"
+            >
+              {step.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}

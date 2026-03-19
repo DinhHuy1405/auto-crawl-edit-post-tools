@@ -9,9 +9,9 @@
   },
   "audio": {
     "volumes": {
-      "mainVideo": 0.0,
-      "backgroundMusic": 0.5,
-      "voiceNarration": 1.5
+      "mainVideo": 0,
+      "backgroundMusic": 1.45,
+      "voiceNarration": 1.75
     },
     "codec": "aac",
     "bitrate": "192k",
@@ -26,15 +26,27 @@
   "templates": {
     "mainVideo": "f.mp4",
     "templateVideo": "f.mp4",
-    "backgroundMusic": "sound.mp3",
-    "logo": "logo.png"
+    "backgroundMusic": "/Users/nguyendinhhuy/Desktop/Personal Project/auto-crawl-edit-post-tools/edit-video/assets/sound.mp3",
+    "logo": "/Users/nguyendinhhuy/Desktop/Personal Project/auto-crawl-edit-post-tools/edit-video/assets/logo.png"
   },
   "layout": {
+    "templateY": 0,
+    "logoX": 57,
+    "logoY": 313,
+    "logoW": 200,
+    "logoH": 80,
+    "titleY": 1720,
     "templateX": 0,
-    "templateY": 350,
-    "logoX": 30,
-    "logoY": 360,
-    "logoScale": "130:130"
+    "logoScale": "200:80",
+    "subtitleY": 800,
+    "subtitleSize": 42,
+    "subtitleColor": "#FFFFFF",
+    "subtitleOutline": "#000000",
+    "titleDuration": 5,
+    "templateW": 1440,
+    "templateH": -1,
+    "titleW": 1440,
+    "titleH": 300
   },
   "tts": {
     "provider": "gemini",
@@ -57,10 +69,42 @@
   },
   "crawler": {
     "useJDownloader": true,
-    "downloadFormat": "mp4"
+    "downloadFormat": "mp4",
+    "minDurationSec": 180,
+    "channels": [
+      {
+        "id": "BLV Anh Quân Discovery",
+        "label": "BLV Anh Quân Discovery",
+        "enabled": false
+      },
+      {
+        "id": "Củ Đậu Story",
+        "label": "Củ Đậu Story",
+        "enabled": false
+      },
+      {
+        "id": "KHỐI CÊ",
+        "label": "KHỐI CÊ",
+        "enabled": false
+      },
+      {
+        "id": "Tuyền Văn Hóa",
+        "label": "Tuyền Văn Hóa",
+        "enabled": true
+      },
+      {
+        "id": "BLV Trung Đàm Discovery",
+        "label": "BLV Trung Đàm Discovery",
+        "enabled": false
+      }
+    ]
   },
   "upload": {
-    "platforms": ["tiktok", "threads", "facebook"],
+    "platforms": [
+      "threads",
+      "tiktok",
+      "facebook"
+    ],
     "showBrowser": true,
     "timeout": 30000
   }

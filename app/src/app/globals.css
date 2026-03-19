@@ -1,0 +1,239 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 84% 4.9%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 221 83% 96%;
+    --accent-foreground: 221 83% 40%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221 83% 53%;
+    --radius: 0.5rem;
+    --success: 142 71% 45%;
+    --success-bg: 142 71% 96%;
+    --warning: 38 92% 50%;
+    --warning-bg: 38 92% 95%;
+  }
+}
+
+@layer base {
+  * { @apply border-border box-border; }
+  html { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  body { @apply bg-background text-foreground antialiased; font-feature-settings: "cv11", "ss01"; }
+  h1, h2, h3, h4 { @apply font-semibold tracking-tight; }
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+::-webkit-scrollbar-thumb:hover { background: #CBD5E1; }
+
+/* ===== SIDEBAR ===== */
+.sidebar-nav-item {
+  @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150;
+  @apply text-slate-500 hover:text-slate-900 hover:bg-slate-100;
+}
+.sidebar-nav-item.active {
+  @apply bg-blue-50 text-blue-700;
+}
+.sidebar-nav-item .nav-icon {
+  @apply w-[18px] h-[18px] shrink-0;
+}
+
+/* ===== CARDS ===== */
+.stat-card { @apply bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow; }
+.section-card { @apply bg-white rounded-xl border border-slate-200 shadow-sm; }
+
+/* ===== LOGS ===== */
+.log-viewer {
+  @apply font-mono text-xs leading-5 bg-slate-950 text-slate-300 rounded-lg p-4;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  /* Auto-scroll: content pushes to bottom */
+  justify-content: flex-end;
+}
+/* Wrapper trick: all lines inside, overflow scrollable */
+.log-viewer > .log-inner {
+  display: flex;
+  flex-direction: column;
+  overflow-anchor: none;
+}
+.log-viewer > .log-scroll-anchor {
+  overflow-anchor: auto;
+  height: 1px;
+}
+.log-line { display: block; white-space: pre-wrap; word-break: break-all; }
+.log-line.success { color: #4ADE80; }
+.log-line.error   { color: #F87171; }
+.log-line.warning { color: #FCD34D; }
+.log-line.info    { color: #60A5FA; }
+.log-line.dim     { color: #475569; }
+.log-line.default { color: #CBD5E1; }
+
+/* ===== WORKFLOW STEPS ===== */
+.step-connector {
+  @apply w-px h-5 bg-slate-200 mx-auto my-0.5;
+}
+.step-connector.done { @apply bg-green-300; }
+
+/* ===== CANVAS EDITOR ===== */
+.canvas-container {
+  position: relative;
+  overflow: hidden;
+  cursor: crosshair;
+  background: #0F172A;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.1), 0 4px 24px rgba(0,0,0,0.15);
+}
+.canvas-element {
+  position: absolute;
+  box-sizing: border-box;
+  transition: box-shadow 0.1s;
+}
+.canvas-element:hover { z-index: 10; }
+.canvas-element.dragging {
+  z-index: 20;
+  cursor: grabbing !important;
+  box-shadow: 0 0 0 2px white, 0 8px 32px rgba(0,0,0,0.4);
+}
+.canvas-element.selected {
+  box-shadow: 0 0 0 2px hsl(var(--primary));
+}
+.resize-handle {
+  position: absolute;
+  width: 8px; height: 8px;
+  background: white;
+  border: 2px solid hsl(var(--primary));
+  border-radius: 2px;
+  cursor: se-resize;
+  bottom: -4px; right: -4px;
+  z-index: 30;
+}
+.drag-label {
+  position: absolute;
+  top: 4px; left: 4px;
+  background: rgba(0,0,0,0.7);
+  color: white;
+  font-size: 10px;
+  font-family: 'Inter', sans-serif;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+.canvas-ruler {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  background: rgba(255,255,255,0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 8px;
+  color: #475569;
+  pointer-events: none;
+}
+.split-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: rgba(251, 191, 36, 0.8);
+  cursor: ns-resize;
+  z-index: 15;
+  transition: background 0.15s;
+}
+.split-line:hover { background: #FCD34D; }
+.split-line::before {
+  content: '';
+  position: absolute;
+  top: -4px; left: 0; right: 0; bottom: -4px;
+}
+
+/* ===== STATUS BADGES ===== */
+.status-done    { @apply inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200; }
+.status-pending { @apply inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200; }
+.status-error   { @apply inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200; }
+.status-running { @apply inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200; }
+.status-active  { @apply inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200; }
+.status-quota   { @apply inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200; }
+.status-standby { @apply inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200; }
+
+/* ===== FORM ELEMENTS ===== */
+.form-group { @apply space-y-1.5; }
+.form-label { @apply text-sm font-medium text-slate-700; }
+.form-hint  { @apply text-xs text-slate-400 mt-1; }
+.form-section { @apply space-y-4 p-5 bg-slate-50 rounded-lg border border-slate-200; }
+.form-section-title { @apply text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2; }
+
+/* ===== TABLES ===== */
+.data-table { @apply w-full; }
+.data-table th { @apply text-xs font-semibold text-slate-500 uppercase tracking-wide text-left py-3 px-4; }
+.data-table td { @apply text-sm text-slate-700 py-3 px-4 border-t border-slate-100; }
+.data-table tr:hover td { @apply bg-slate-50; }
+
+/* ===== PAGE HEADER ===== */
+.page-header { @apply mb-6; }
+.page-title  { @apply text-xl font-bold text-slate-900 flex items-center gap-2; }
+.page-desc   { @apply text-sm text-slate-500 mt-0.5; }
+
+/* ===== ANIMATIONS ===== */
+@keyframes slide-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+.animate-slide-up { animation: slide-in-up 0.2s ease-out; }
+.animate-fade-in  { animation: fade-in 0.2s ease-out; }
+
+/* Active step pulse */
+@keyframes step-pulse {
+  0%, 100% { background-color: rgb(239 246 255); border-color: rgb(147 197 253); }
+  50% { background-color: rgb(219 234 254); border-color: rgb(96 165 250); }
+}
+.step-active-pulse { animation: step-pulse 2s ease-in-out infinite; }
+
+/* ===== UPLOAD PLATFORM CHIPS ===== */
+.platform-chip {
+  @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md;
+}
+.platform-chip.uploaded  { @apply bg-green-50 text-green-700; }
+.platform-chip.failed    { @apply bg-red-50 text-red-700; }
+.platform-chip.pending   { @apply bg-slate-100 text-slate-500; }
+
+/* ===== VOLUME SLIDER ===== */
+.volume-track { @apply relative h-1.5 bg-slate-200 rounded-full overflow-hidden; }
+.volume-fill  { @apply absolute left-0 top-0 h-full bg-blue-500 rounded-full transition-all; }
+
+/* ===== PROGRESS ===== */
+.workflow-progress {
+  @apply h-1.5 bg-slate-200 rounded-full overflow-hidden;
+}
+.workflow-progress-fill {
+  @apply h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-500;
+}
