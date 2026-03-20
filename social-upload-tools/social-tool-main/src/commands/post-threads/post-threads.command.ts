@@ -180,189 +180,14 @@ export class PostThreadsCommand extends CommandRunner {
       }
 
       console.log('✅ Found post button, clicking...');
-      
-      // Scroll button into view
       await postButton.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(500);
-      
-      // Monitor for API calls to confirm post was sent
-      let postRequestSent = false;
-      const responseListener = async (response) => {
-        const url = response.url();
-        if ((url.includes('graphql') || url.includes('/api/') || url.includes('threads')) && response.request().method() === 'POST') {
-          // Ignore known irrelevant GraphQL calls
-          if (url.includes('viewer') || url.includes('nullstate') || url.includes('sugesstions')) return;
+      await page.waitForTimeout(300);
+      await postButton.click();
+      console.log('✅ Post button clicked');
 
-          console.log(`📥 Response from ${url}: ${response.status()}`);
-          try {
-            // Check if response is JSON and try to print relevant parts
-            const text = await response.text();
-            
-            // Check for actual POST success markers
-            if (text.includes('media_id') || text.includes('thread_id') || text.includes('posted') || text.includes('created')) {
-                console.log('✅ Found media/thread creation confirmation in response!');
-                postRequestSent = true;
-            }
-
-            if (text.length < 500) {
-              console.log('📄 Response body:', text);
-            } else {
-              console.log('📄 Response body (truncated):', text.substring(0, 200));
-            }
-          } catch (e) {
-            // ignore body read errors (e.g. streaming responses or redirects)
-          }
-        }
-      };
-      
-      const requestListener = (request) => {
-        if (request.url().includes('graphql') || request.url().includes('/api/') || request.url().includes('threads')) {
-          const method = request.method();
-          if (method === 'POST') {
-             // Only log potential candidates, verify response for actual success
-             // Don't set postRequestSent=true here anymore, wait for response
-             // console.log(`📡 POST request detected: ${request.url()}`);
-          }
-        }
-      };
-      
-      page.on('request', requestListener);
-      page.on('response', responseListener);
-      
-      try {
-        console.log('⏱️  Attempting click...');
-        
-        // Log the exact text of the button we found
-        const buttonText = await postButton.innerText().catch(() => 'unknown');
-        const buttonHTML = await postButton.evaluate(el => el.outerHTML).catch(() => 'unknown');
-        console.log(`🔍 Button text is: "${buttonText}"`);
-        console.log(`🔍 Button HTML is: ${buttonHTML}`);
-
-        // Screenshot BEFORE click
-        console.log('📸 Taking pre-click screenshot...');
-        await page.screenshot({ path: '/tmp/threads_pre_click_debug.png', fullPage: true });
-
-        // Check if button is enabled (Wait for it)
-        try {
-           console.log('⏳ Verifying button state...');
-           // Sometimes the button takes a moment to become enabled after input
-           await page.waitForTimeout(2000); 
-        } catch (e) {}
-
-        const isEnabled = await postButton.isEnabled().catch(() => false);
-        console.log(`🔍 Button enabled state: ${isEnabled}`);
-        
-        // Validation: If button is disabled, we shouldn't click
-        if (!isEnabled) {
-            console.log('⚠️ Button reports disabled! Attempting to refresh input state...');
-             // Try to focus input and trigger event again
-             if (isTextInputVisible && textInput) {
-                await textInput.focus();
-                await textInput.press('Space');
-                await textInput.press('Backspace');
-                await page.waitForTimeout(1000);
-             }
-        }
-
-        // Strategy 1: Playwright Normal Click (No Force) - to detect if covered
-        console.log('👆 Strategy 1: Playwright Normal Click (Strict)');
-        try {
-          await postButton.click({ timeout: 5000 });
-          console.log('✅ Strategy 1 success');
-        } catch (e) {
-             console.log('⚠️ Strategy 1 failed (likely covered/not visible):', e.message);
-             console.log('👆 Strategy 1.5: Playwright Force Click');
-             await postButton.click({ force: true, timeout: 3000 }).catch(err => console.log('Strat 1.5 failed', err.message));
-        }
-        await page.waitForTimeout(1000);
-
-        if (!postRequestSent) {
-          // Check if button is still there
-          const isStillVisible = await postButton.isVisible({ timeout: 500 }).catch(() => false);
-          if (isStillVisible) {
-            // Strategy 2: JavaScript Click
-            console.log('👆 Strategy 2: Native JavaScript Click');
-            await postButton.evaluate((el: HTMLElement) => el.click()).catch(e => console.log('Strategy 2 failed:', e.message));
-            await page.waitForTimeout(1000);
-          } else {
-            console.log('✅ Modal closed after Strategy 1, skipping other click strategies');
-            postRequestSent = true; // Assume success if modal closed
-          }
-        }
-
-        if (!postRequestSent) {
-           const isStillVisible = await postButton.isVisible({ timeout: 500 }).catch(() => false);
-           if (isStillVisible) {
-             // Strategy 3: JavaScript Mouse Events
-             console.log('👆 Strategy 3: JavaScript Mouse Events (mousedown/mouseup/click)');
-             await postButton.evaluate((el: HTMLElement) => {
-               const eventOpts = { bubbles: true, cancelable: true, view: window };
-               el.dispatchEvent(new MouseEvent('mousedown', eventOpts));
-               el.dispatchEvent(new MouseEvent('mouseup', eventOpts));
-               el.dispatchEvent(new MouseEvent('click', eventOpts));
-             }).catch(e => console.log('Strategy 3 failed:', e.message));
-             await page.waitForTimeout(1000);
-           }
-        }
-
-      } catch (e) {
-        console.log('⚠️  Click execution error:', e);
-      } finally {
-        page.off('request', requestListener);
-      }
-      
-      if (postRequestSent) {
-        console.log('✅ Post request confirmed sent');
-      } else {
-        console.log('⚠️  WARNING: No POST request detected after click!');
-        // Don't throw immediately, check if UI feedback exists
-      }
-
-      // Wait for posting to complete - poll for "Posting..." indicator then wait for it to go away
+      // Wait for "Posting..." to appear then disappear before closing browser
       console.log('⏳ Waiting for post to finish publishing...');
       await this.waitForPostingComplete(page);
-
-      // Verify posting success by checking for error messages
-      const errorMessage = page.locator('text=Something went wrong').first();
-      const isError = await errorMessage.isVisible({ timeout: 2000 }).catch(() => false);
-      
-      if (isError) {
-        throw new Error('Thread posting failed - error message displayed');
-      }
-
-      // Check if we're still on upload page (which means post might have failed silently)
-      const uploadForm = page.locator('[aria-label*="Compose"]').first();
-      const isStillOnUpload = await uploadForm.isVisible({ timeout: 1000 }).catch(() => false);
-      
-      if (isStillOnUpload) {
-        console.log('⚠️  Still on compose screen - checking for success message...');
-        // Look for "Your thread has been shared" or similar success message
-        const successMessages = [
-          'thread has been shared',
-          'shared',
-          'posted',
-          'success',
-          'Your post',
-        ];
-        
-        let foundSuccess = false;
-        for (const msg of successMessages) {
-          const msgLocator = page.locator(`text=${msg}`).first();
-          const isVisible = await msgLocator.isVisible({ timeout: 1000 }).catch(() => false);
-          if (isVisible) {
-            console.log(`✅ Found success message: "${msg}"`);
-            foundSuccess = true;
-            break;
-          }
-        }
-        
-        if (!foundSuccess) {
-          console.log('⚠️  No success confirmation found - post may have failed');
-          throw new Error('No success confirmation - post may not have been sent');
-        }
-      } else {
-        console.log('✅ Compose form closed - post appears to be successful');
-      }
 
       console.log('✅ Thread posted successfully');
     } catch (error) {
@@ -372,113 +197,126 @@ export class PostThreadsCommand extends CommandRunner {
   }
 
   /**
-   * Wait for video upload + server-side processing to finish before posting.
-   * Threads shows a progress bar or thumbnail preview while processing.
-   * We wait until all known "uploading" indicators are gone AND the Post button is enabled.
+   * Wait for the video thumbnail/preview to appear in the compose area.
+   * Threads shows a video thumbnail once upload is complete.
+   * Strategy: wait until a <video> or <img> preview appears inside the compose area,
+   * OR until the "..." loading dots inside the media container disappear.
+   * Max 3 minutes.
    */
   private async waitForVideoUploadComplete(page: Page) {
-    console.log('⏳ Waiting for video upload & processing to complete...');
-    const MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes max
-    const POLL_MS = 1500;
-    const deadline = Date.now() + MAX_WAIT_MS;
+    console.log('⏳ Waiting for video upload to complete (thumbnail to appear)...');
+    const MAX_WAIT_MS = 3 * 60 * 1000;
+    const POLL_MS = 2000;
+    const startTs = Date.now();
+    const deadline = startTs + MAX_WAIT_MS;
+
+    // Wait a moment for Threads to begin processing
+    await page.waitForTimeout(3000);
 
     while (Date.now() < deadline) {
-      // Check various upload-in-progress indicators
-      const indicators = [
-        '[role="progressbar"]',
-        '[aria-label*="upload" i]',
-        '[aria-label*="uploading" i]',
-        '[aria-label*="processing" i]',
-        'svg[aria-label*="Loading"]',
-        // Threads shows a spinner inside the media preview while processing
-        'div[aria-label*="Media"] [role="progressbar"]',
-      ];
+      const elapsed = Math.round((Date.now() - startTs) / 1000);
 
-      let uploading = false;
-      for (const sel of indicators) {
-        const el = page.locator(sel).first();
-        const visible = await el.isVisible({ timeout: 300 }).catch(() => false);
-        if (visible) { uploading = true; break; }
+      // Check if a video/image thumbnail is visible inside the compose area
+      const hasVideoThumb = await page.locator('video[src]').first().isVisible({ timeout: 300 }).catch(() => false);
+      const hasImgThumb   = await page.locator('img[src*="cdninstagram"], img[src*="fbcdn"], img[src*="threads"]').first().isVisible({ timeout: 300 }).catch(() => false);
+
+      // Also check: if there's NO loading spinner/progress anymore = done
+      const hasProgress   = await page.locator('[role="progressbar"]').first().isVisible({ timeout: 300 }).catch(() => false);
+      const hasSpinner    = await page.locator('svg[aria-label*="Loading"], [aria-label*="loading" i]').first().isVisible({ timeout: 300 }).catch(() => false);
+
+      if (hasVideoThumb || hasImgThumb) {
+        console.log(`✅ Video thumbnail visible (${elapsed}s) — ready to post`);
+        await page.waitForTimeout(1000);
+        return;
       }
 
-      if (!uploading) {
-        // Double-check: Post button should now be enabled/not aria-disabled
-        const postBtn = page.locator('div[role="button"]:has-text("Post"), div[role="button"]:has-text("Đăng"), button:has-text("Post"), button:has-text("Đăng")').first();
-        const btnVisible = await postBtn.isVisible({ timeout: 500 }).catch(() => false);
-        if (btnVisible) {
-          const ariaDisabled = await postBtn.getAttribute('aria-disabled').catch(() => null);
-          if (ariaDisabled !== 'true') {
-            console.log('✅ Video upload complete — Post button is ready');
-            await page.waitForTimeout(1500); // small settle delay
-            return;
-          }
-        } else {
-          // Button not visible yet but no progress indicator — wait a bit more
-          await page.waitForTimeout(POLL_MS);
-          continue;
-        }
+      if (!hasProgress && !hasSpinner && elapsed >= 5) {
+        // No spinner and some time has passed — assume upload done
+        console.log(`✅ No loading indicators after ${elapsed}s — proceeding to post`);
+        await page.waitForTimeout(1000);
+        return;
       }
 
-      const elapsed = Math.round((Date.now() - (deadline - MAX_WAIT_MS)) / 1000);
-      console.log(`⏳ Still uploading/processing... (${elapsed}s elapsed)`);
+      console.log(`⏳ Waiting for upload... (${elapsed}s)`);
       await page.waitForTimeout(POLL_MS);
     }
 
-    console.log('⚠️  Upload wait timed out after 10 minutes — proceeding anyway');
+    console.log('⚠️  Upload wait timed out (3 min) — proceeding anyway');
   }
 
   /**
    * After clicking Post, wait for Threads to finish publishing the post.
-   * Threads shows "Posting..." text during submission, then navigates away or shows success.
+   * Strategy:
+   *  1. Wait up to 15s for any "Posting..." / "Đang đăng..." indicator to appear.
+   *  2. Once appeared (or even if not), wait for ALL of:
+   *     - "Posting..." indicator to disappear
+   *     - compose modal (role="dialog") to close  OR  success toast to appear
+   *  3. Extra settle: 4s after everything looks done.
+   * Max total wait: 10 minutes (video server-side transcoding on Threads can be very slow).
    */
   private async waitForPostingComplete(page: Page) {
-    const MAX_WAIT_MS = 8 * 60 * 1000; // 8 minutes (video transcoding can be slow)
-    const POLL_MS = 1000;
-    const deadline = Date.now() + MAX_WAIT_MS;
+    const MAX_WAIT_MS = 10 * 60 * 1000;
+    const POLL_MS = 1500;
+    const startTs = Date.now();
+    const deadline = startTs + MAX_WAIT_MS;
 
-    // First, wait for the "Posting..." indicator to appear (up to 10s)
-    const postingSelectors = [
-      'text=Posting...',
-      'text=Đang đăng...',
-      '[aria-label*="Posting"]',
-      '[aria-label*="posting" i]',
-    ];
-
-    let postingAppeared = false;
-    const detectDeadline = Date.now() + 10000;
-    while (Date.now() < detectDeadline) {
-      for (const sel of postingSelectors) {
-        const visible = await page.locator(sel).first().isVisible({ timeout: 300 }).catch(() => false);
-        if (visible) { postingAppeared = true; break; }
+    // Detect the "Posting..." toast/overlay that Threads shows after clicking Post.
+    // Use exact text selectors to avoid matching the "Post" button itself.
+    const isPostingVisible = async () => {
+      const checks = [
+        // Exact "Posting..." string (with ellipsis char or 3 dots)
+        () => page.locator('text=Posting...').first().isVisible({ timeout: 300 }),
+        () => page.locator('text=Đang đăng...').first().isVisible({ timeout: 300 }),
+        // Threads wraps the toast in a span/div — check innerText exactly
+        () => page.locator('span:text("Posting..."), div:text("Posting...")').first().isVisible({ timeout: 300 }),
+        () => page.locator('[aria-label="Posting"]').first().isVisible({ timeout: 300 }),
+      ];
+      for (const check of checks) {
+        const v = await check().catch(() => false);
+        if (v) return true;
       }
-      if (postingAppeared) break;
+      return false;
+    };
+
+    // ── Phase 1: wait up to 15s for "Posting..." to appear after click ────────
+    console.log('⏳ Waiting for "Posting..." indicator...');
+    let postingAppeared = false;
+    const detectDeadline = Date.now() + 15000;
+    while (Date.now() < detectDeadline) {
+      if (await isPostingVisible()) { postingAppeared = true; break; }
       await page.waitForTimeout(500);
     }
 
-    if (postingAppeared) {
-      console.log('⏳ Post submission in progress (video being processed by Threads)...');
-      // Now wait for it to disappear
-      while (Date.now() < deadline) {
-        let anyVisible = false;
-        for (const sel of postingSelectors) {
-          const visible = await page.locator(sel).first().isVisible({ timeout: 300 }).catch(() => false);
-          if (visible) { anyVisible = true; break; }
-        }
-        if (!anyVisible) {
-          console.log('✅ Posting complete');
-          break;
-        }
-        const elapsed = Math.round((Date.now() - (deadline - MAX_WAIT_MS)) / 1000);
-        console.log(`⏳ Still posting... (${elapsed}s elapsed)`);
-        await page.waitForTimeout(POLL_MS);
-      }
-    } else {
-      console.log('ℹ️  "Posting..." indicator not detected — waiting 8s as fallback');
-      await page.waitForTimeout(8000);
+    if (!postingAppeared) {
+      console.log('ℹ️  "Posting..." not detected within 15s — will wait 10s as fallback then close');
+      await page.waitForTimeout(10000);
+      return;
     }
 
-    // Final settle: make sure UI has fully transitioned before browser closes
+    console.log('✅ "Posting..." detected — waiting for it to disappear...');
+
+    // ── Phase 2: wait for "Posting..." to disappear ───────────────────────────
+    while (Date.now() < deadline) {
+      const elapsed = Math.round((Date.now() - startTs) / 1000);
+      const stillPosting = await isPostingVisible();
+
+      if (!stillPosting) {
+        console.log(`✅ "Posting..." gone — post is complete (${elapsed}s)`);
+        break;
+      }
+
+      console.log(`⏳ Still posting... (${elapsed}s elapsed)`);
+      await page.waitForTimeout(POLL_MS);
+    }
+
+    if (Date.now() >= deadline) {
+      console.log('⚠️  Post wait timed out after 10 minutes — closing browser anyway');
+    }
+
+    // Final settle
+    console.log('⏳ Final settle (3s)...');
     await page.waitForTimeout(3000);
+    console.log('✅ Browser will now close');
   }
 
   private async uploadMedia(page: Page, mediaPath: string) {
@@ -523,83 +361,29 @@ export class PostThreadsCommand extends CommandRunner {
 
   private async findPostButton(page: Page) {
     try {
-      console.log('🔍 Searching for Post button with improved selector...');
-      
-      // Attempt to find the Post button SPECIFICALLY inside the Compose Modal (role="dialog")
-      // This prevents clicking buttons on the background (timeline) which would close the modal (Save to draft)
-      const composeModal = page.locator('div[role="dialog"]').first();
-      const isModalVisible = await composeModal.isVisible({ timeout: 1000 }).catch(() => false);
-      
-      if (isModalVisible) {
-        console.log('✅ Found active Compose Modal (role=dialog)');
-        
-        // Look inside the modal first
-        const modalPostButton = composeModal.locator('div[role="button"]:has-text("Post"), button:has-text("Post"), div[role="button"]:has-text("Đăng"), button:has-text("Đăng")').first();
-        if (await modalPostButton.isVisible({ timeout: 1000 }).catch(() => false)) {
-             console.log('✅ Found Post button INSIDE modal');
-             return modalPostButton;
-        }
-      } else {
-        console.log('⚠️ Compose Modal (role=dialog) not found - checking global scope');
-      }
+      console.log('🔍 Looking for Post button...');
 
-      // Method 1: Find by exact text "Post" in div[role="button"] (Global fallback)
-      let postButton = page.locator('div[role="button"]:has-text("Post"), div[role="button"]:has-text("Đăng")').first();
-      let isVisible = await postButton.isVisible({ timeout: 2000 }).catch(() => false);
-      
-      if (isVisible) {
-        // Don't check isEnabled() for divs - it doesn't work reliably
-        // Instead check if it has any disabled classes or aria-disabled
-        const ariaDisabled = await postButton.getAttribute('aria-disabled').catch(() => null);
-        const hasDisabledClass = await postButton.evaluate((el) => {
-          const classList = el.className || '';
-          return classList.includes('disabled') || classList.includes('disable');
-        }).catch(() => false);
-        
-        if (ariaDisabled !== 'true' && !hasDisabledClass) {
-          console.log('✅ Found Post button (method 1: div[role="button"]:has-text)');
-          return postButton;
-        } else {
-          console.log('⚠️  Post button found but appears disabled');
-        }
-      }
-      
-      // Method 2: More specific - looking for all role="button" that contain "Post"
-      const allButtonElements = page.locator('div[role="button"]');
-      const buttonCount = await allButtonElements.count();
-      console.log(`📊 Found ${buttonCount} div[role="button"] elements`);
+      // Try candidates in priority order
+      const candidates = [
+        // Native <button> with exact text — matches the button in the screenshot
+        () => page.getByRole('button', { name: 'Post', exact: true }),
+        () => page.getByRole('button', { name: 'Đăng', exact: true }),
+        // div[role="button"] with text
+        () => page.locator('div[role="button"]').filter({ hasText: /^Post$/ }),
+        () => page.locator('div[role="button"]').filter({ hasText: /^Đăng$/ }),
+      ];
 
-      for (let i = buttonCount - 1; i >= 0; i--) {
-        try {
-          const element = allButtonElements.nth(i);
-          const text = await element.textContent({ timeout: 300 }).catch(() => '');
-          const elemIsVisible = await element.isVisible({ timeout: 300 }).catch(() => false);
-          
-          // Exact match for "Post" button
-          if (elemIsVisible && text && (text.trim() === 'Post' || text.trim() === 'Đăng')) {
-            console.log('✅ Found Post button (method 2: exact text match)');
-            return element;
-          }
-        } catch (e) {
-          // Continue searching
+      for (const getBtn of candidates) {
+        const btn = getBtn();
+        const visible = await btn.first().isVisible({ timeout: 1000 }).catch(() => false);
+        if (visible) {
+          const text = await btn.first().textContent().catch(() => '');
+          console.log(`✅ Found Post button: "${text?.trim()}"`);
+          return btn.first();
         }
       }
 
-      // Method 3: Fallback - Look for button by looking at structure
-      postButton = page.locator('div[role="button"] > div:has-text("Post"), div[role="button"] > div:has-text("Đăng")').first();
-      isVisible = await postButton.isVisible({ timeout: 2000 }).catch(() => false);
-      
-      if (isVisible) {
-        // Get parent button
-        const parentButton = postButton.locator('xpath=ancestor::div[@role="button"]').first();
-        const parentVisible = await parentButton.isVisible({ timeout: 1000 }).catch(() => false);
-        if (parentVisible) {
-          console.log('✅ Found Post button (method 3: parent selector)');
-          return parentButton;
-        }
-      }
-
-      console.log('⚠️  Post button not found after trying all methods');
+      console.log('⚠️  Post button not found');
       return null;
     } catch (error) {
       console.error('Error finding post button:', error);

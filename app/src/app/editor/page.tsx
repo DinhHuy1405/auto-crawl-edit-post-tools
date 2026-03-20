@@ -21,7 +21,7 @@ interface BlurZone {
 interface Layout {
   templateX: number; templateY: number; templateW: number; templateH: number
   logoX: number; logoY: number; logoW: number; logoH: number
-  titleY: number; titleW: number; titleH: number
+  titleX: number; titleY: number; titleW: number; titleH: number
   titleDuration: number; mainVideoSkip: number
 }
 
@@ -177,9 +177,9 @@ function Canvas({
   const tplCW = toC(layout.templateW), tplCH = toC(tplRH)
   const logoCX = toC(layout.logoX), logoCY = toC(layout.logoY)
   const logoCW = toC(layout.logoW), logoCH = toC(layout.logoH)
+  const titleCX = toC(layout.titleX)
   const titleCY = toC(layout.titleY)
   const titleCW = toC(layout.titleW), titleCH = toC(layout.titleH)
-  const titleCX = toC(layout.templateX) // title always left=0 in real coords → X=0
 
   return (
     <div
@@ -301,10 +301,10 @@ function Canvas({
             activeElement === 'title'
               ? 'bg-purple-500/50 border-purple-400 z-20'
               : 'bg-black/50 border-purple-400/40 hover:bg-purple-500/30 hover:border-purple-400/70 z-10')}
-          style={{ left: 0, top: titleCY, width: titleCW, height: Math.max(5, titleCH) }}
+          style={{ left: titleCX, top: titleCY, width: titleCW, height: Math.max(5, titleCH) }}
           onMouseDown={e => startMove(e, 'title',
-            () => [layout.titleW > 0 ? 0 : 0, layout.titleY],
-            (_, ny) => onLayout({ titleY: clamp(ny, 0, REAL_H - layout.titleH) }),
+            () => [layout.titleX, layout.titleY],
+            (nx, ny) => onLayout({ titleX: nx, titleY: clamp(ny, 0, REAL_H - layout.titleH) }),
           )}
           onClick={e => { e.stopPropagation(); setActiveElement('title') }}
         >
@@ -317,8 +317,8 @@ function Canvas({
           {activeElement === 'title' && (
             <ResizeHandles w={titleCW} h={Math.max(5, titleCH)} onHandle={(e, handle) =>
               startResize(e, handle,
-                { x: 0, y: layout.titleY, w: layout.titleW, h: layout.titleH },
-                b => onLayout({ titleY: b.y, titleW: b.w, titleH: b.h }),
+                { x: layout.titleX, y: layout.titleY, w: layout.titleW, h: layout.titleH },
+                b => onLayout({ titleX: b.x, titleY: b.y, titleW: b.w, titleH: b.h }),
                 100, 20,
               )
             } />
@@ -433,7 +433,7 @@ export default function EditorPage() {
   const [layout, setLayout] = useState<Layout>({
     templateX: 0, templateY: 0, templateW: 1440, templateH: -1,
     logoX: 109, logoY: 372, logoW: 200, logoH: 80,
-    titleY: 1687, titleW: 1440, titleH: 300,
+    titleX: 0, titleY: 1687, titleW: 1440, titleH: 300,
     titleDuration: 5, mainVideoSkip: 180,
   })
   const [audio, setAudio] = useState<AudioConfig>({ mainVideo: 0, backgroundMusic: 1.45, voiceNarration: 1.75 })
@@ -456,6 +456,7 @@ export default function EditorPage() {
       if (c?.layout) {
         const l = c.layout as Partial<Layout>
         setLayout(prev => ({ ...prev, ...l,
+          titleX: (l as {titleX?:number}).titleX ?? prev.titleX,
           titleDuration: (l as {titleDuration?:number}).titleDuration ?? prev.titleDuration,
           mainVideoSkip: (c?.video as Record<string,unknown>)?.mainVideoSkipSec as number ?? prev.mainVideoSkip,
         }))
@@ -492,8 +493,9 @@ export default function EditorPage() {
           logoX: layout.logoX, logoY: layout.logoY,
           logoW: layout.logoW, logoH: layout.logoH,
           logoScale: `${layout.logoW}:${layout.logoH}`,
-          titleY: layout.titleY, titleW: layout.titleW,
-          titleH: layout.titleH, titleDuration: layout.titleDuration,
+          titleX: layout.titleX, titleY: layout.titleY,
+          titleW: layout.titleW, titleH: layout.titleH,
+          titleDuration: layout.titleDuration,
         },
         audio: { ...(config?.audio as object||{}), volumes: audio },
       }
@@ -619,7 +621,7 @@ export default function EditorPage() {
             <span className="text-white/10">|</span>
             <span className="text-blue-400/70">Logo <strong className="text-blue-300">{layout.logoX},{layout.logoY}</strong> {layout.logoW}×{layout.logoH}</span>
             <span className="text-white/10">|</span>
-            <span className="text-purple-400/70">Title Y:<strong className="text-purple-300">{layout.titleY}</strong> {layout.titleW}×{layout.titleH} {layout.titleDuration}s</span>
+            <span className="text-purple-400/70">Title <strong className="text-purple-300">{layout.titleX},{layout.titleY}</strong> {layout.titleW}×{layout.titleH} {layout.titleDuration}s</span>
           </div>
 
           <Canvas
@@ -696,12 +698,13 @@ export default function EditorPage() {
 
               {/* Title */}
               <Section label="Title Overlay" active={activeSection==='title'} accent="purple" icon={Type}>
-                <p className="text-[9px] text-white/25">Ảnh PNG tiêu đề (Canvas/Anton font). Kéo di chuyển, resize 8 handles.</p>
+                <p className="text-[9px] text-white/25">Ảnh PNG tiêu đề. Kéo để di chuyển theo cả 2 chiều, resize 8 handles.</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <NumField label="Y Position" value={layout.titleY} onChange={v=>onLayout({titleY:v})} max={REAL_H} />
-                  <NumField label="Duration" value={layout.titleDuration} onChange={v=>onLayout({titleDuration:v})} min={1} max={60} unit="s" />
+                  <NumField label="X" value={layout.titleX} onChange={v=>onLayout({titleX:v})} min={-REAL_W} max={REAL_W} />
+                  <NumField label="Y" value={layout.titleY} onChange={v=>onLayout({titleY:v})} max={REAL_H} />
                   <NumField label="Width" value={layout.titleW} onChange={v=>onLayout({titleW:v})} min={100} max={REAL_W} />
                   <NumField label="Height" value={layout.titleH} onChange={v=>onLayout({titleH:v})} min={20} max={800} />
+                  <NumField label="Duration" value={layout.titleDuration} onChange={v=>onLayout({titleDuration:v})} min={1} max={60} unit="s" hint="Giây hiển thị title" />
                 </div>
               </Section>
             </>)}
@@ -779,24 +782,22 @@ export default function EditorPage() {
             )}
           </div>
 
-          {/* Render logs */}
-          {renderLogs.length>0 && (
-            <div className="border-t shrink-0" style={{ borderColor:'rgba(255,255,255,0.05)', maxHeight:160 }}>
-              <div className="px-3 py-1.5 flex items-center gap-2 border-b" style={{ background:'rgba(255,255,255,0.02)', borderColor:'rgba(255,255,255,0.05)' }}>
-                <div className={cn('w-1.5 h-1.5 rounded-full', rendering?'bg-green-400 animate-pulse':'bg-white/15')} />
-                <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">Render Output</span>
-                {rendering && <Loader2 className="w-3 h-3 text-blue-400 animate-spin ml-auto" />}
-              </div>
-              <div ref={logRef} className="overflow-y-auto p-2 space-y-0.5" style={{ maxHeight:110 }}>
-                {renderLogs.map((l,i) => (
-                  <div key={i} className={cn('text-[10px] font-mono leading-tight',
-                    l.level==='error'?'text-red-400':l.level==='success'?'text-green-400':l.level==='info'?'text-blue-400':'text-white/30')}>
-                    {l.msg}
-                  </div>
-                ))}
-              </div>
+          {/* Render logs — fixed height, never expands */}
+          <div className="border-t shrink-0" style={{ height:160, borderColor:'rgba(255,255,255,0.05)', display: renderLogs.length>0 ? 'flex' : 'none', flexDirection:'column' }}>
+            <div className="px-3 py-1.5 flex items-center gap-2 border-b shrink-0" style={{ background:'rgba(255,255,255,0.02)', borderColor:'rgba(255,255,255,0.05)' }}>
+              <div className={cn('w-1.5 h-1.5 rounded-full', rendering?'bg-green-400 animate-pulse':'bg-white/15')} />
+              <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">Live Logs</span>
+              {rendering && <Loader2 className="w-3 h-3 text-blue-400 animate-spin ml-auto" />}
             </div>
-          )}
+            <div ref={logRef} className="overflow-y-auto p-2 space-y-0.5 flex-1">
+              {renderLogs.map((l,i) => (
+                <div key={i} className={cn('text-[10px] font-mono leading-tight',
+                  l.level==='error'?'text-red-400':l.level==='success'?'text-green-400':l.level==='info'?'text-blue-400':'text-white/30')}>
+                  {l.msg}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

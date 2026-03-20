@@ -1,5 +1,6 @@
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs';
 import { chromium } from 'playwright-core';
 
 export const launchBrowser = async (showBrowser: boolean) => {
@@ -28,6 +29,16 @@ export const launchBrowser = async (showBrowser: boolean) => {
 
   if (!userDataDir || !executablePath) {
     throw new Error('Unsupported platform: ' + platform);
+  }
+
+  // Remove stale SingletonLock so we can launch even when Chrome is already open.
+  // Chrome creates this lock file; if the previous session crashed or is still open,
+  // launchPersistentContext fails. Deleting it is safe — Chrome will recreate it.
+  const singletonLock = path.join(userDataDir, 'SingletonLock');
+  const singletonCookie = path.join(userDataDir, 'SingletonCookie');
+  const singletonSocket = path.join(userDataDir, 'SingletonSocket');
+  for (const f of [singletonLock, singletonCookie, singletonSocket]) {
+    try { fs.unlinkSync(f); } catch { /* file doesn't exist — fine */ }
   }
 
   const browser = await chromium.launchPersistentContext(userDataDir, {

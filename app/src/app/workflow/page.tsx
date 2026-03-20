@@ -422,14 +422,14 @@ export default function WorkflowPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-5 gap-4" style={{ height: 480 }}>
         {/* Steps */}
-        <div className="col-span-2 section-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+        <div className="col-span-2 section-card overflow-hidden flex flex-col">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2 shrink-0">
             <Layers className="w-4 h-4 text-slate-400" />
             <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Pipeline Steps</p>
           </div>
-          <div className="p-2 space-y-0.5">
+          <div className="p-2 space-y-0.5 overflow-y-auto flex-1">
             {steps.map((step, i) => (
               <div key={step.id} className={cn(
                 'flex items-center gap-3 p-3 rounded-lg transition-all',
@@ -463,7 +463,7 @@ export default function WorkflowPage() {
           </div>
         </div>
 
-        {/* Logs */}
+        {/* Logs — fixed height, scrolls internally */}
         <div className="col-span-3 section-card overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
@@ -477,11 +477,9 @@ export default function WorkflowPage() {
               </span>
             </div>
           </div>
-          {/* Log container — ref for JS scroll to bottom */}
           <div
             ref={logScrollRef}
             className="font-mono text-[11px] leading-5 bg-slate-950 text-slate-300 overflow-y-auto p-4 flex-1"
-            style={{ height: 'calc(100vh - 420px)', minHeight: 200 }}
           >
             {logs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full">
