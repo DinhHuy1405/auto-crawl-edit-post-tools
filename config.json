@@ -31,11 +31,11 @@
   },
   "layout": {
     "templateY": 0,
-    "logoX": 57,
-    "logoY": 313,
+    "logoX": 109,
+    "logoY": 372,
     "logoW": 200,
     "logoH": 80,
-    "titleY": 1720,
+    "titleY": 1687,
     "templateX": 0,
     "logoScale": "200:80",
     "subtitleY": 800,
@@ -75,26 +75,31 @@
       {
         "id": "BLV Anh Quân Discovery",
         "label": "BLV Anh Quân Discovery",
+        "channelId": "",
         "enabled": false
       },
       {
         "id": "Củ Đậu Story",
         "label": "Củ Đậu Story",
+        "channelId": "",
         "enabled": false
       },
       {
         "id": "KHỐI CÊ",
         "label": "KHỐI CÊ",
+        "channelId": "",
         "enabled": false
       },
       {
         "id": "Tuyền Văn Hóa",
         "label": "Tuyền Văn Hóa",
+        "channelId": "",
         "enabled": true
       },
       {
         "id": "BLV Trung Đàm Discovery",
         "label": "BLV Trung Đàm Discovery",
+        "channelId": "",
         "enabled": false
       }
     ]

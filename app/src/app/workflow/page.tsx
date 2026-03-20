@@ -6,7 +6,7 @@ import {
   Play, Square, Terminal, RotateCcw, GitBranch,
   CheckCircle2, XCircle, Loader2, Clock, ChevronRight,
   AlertCircle, Layers, Plus, Link as LinkIcon,
-  Youtube, Pencil, Trash2, Check, X,
+  Pencil, Trash2, Check, X,
 } from 'lucide-react'
 import {
   TikTokIcon, FacebookIcon, ThreadsIcon, YouTubeIcon,
@@ -15,7 +15,7 @@ import {
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped'
 interface Step { id: string; label: string; description: string; status: StepStatus; duration?: number }
 interface LogLine { message: string; level: string; ts: string }
-interface Channel { id: string; label: string; enabled: boolean }
+interface Channel { id: string; label: string; enabled: boolean; channelId?: string }
 
 const STEPS: Omit<Step, 'status'>[] = [
   { id: 'crawl',          label: 'Crawl Videos',    description: 'Tải video từ YouTube hôm qua'        },
@@ -38,9 +38,11 @@ function ChannelPills({ channels, onChange, disabled }: {
   channels: Channel[]; onChange: (ch: Channel[]) => void; disabled: boolean
 }) {
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
-  const [editVal, setEditVal] = useState('')
+  const [editLabel, setEditLabel] = useState('')
+  const [editChannelId, setEditChannelId] = useState('')
   const [adding, setAdding] = useState(false)
   const [newLabel, setNewLabel] = useState('')
+  const [newChannelId, setNewChannelId] = useState('')
 
   const toggle = (i: number) => {
     if (disabled) return
@@ -49,12 +51,15 @@ function ChannelPills({ channels, onChange, disabled }: {
     onChange(next)
   }
   const startEdit = (i: number, e: React.MouseEvent) => {
-    e.stopPropagation(); setEditingIdx(i); setEditVal(channels[i].label)
+    e.stopPropagation()
+    setEditingIdx(i)
+    setEditLabel(channels[i].label)
+    setEditChannelId(channels[i].channelId ?? '')
   }
   const confirmEdit = (i: number) => {
-    if (!editVal.trim()) { setEditingIdx(null); return }
+    if (!editLabel.trim()) { setEditingIdx(null); return }
     const next = [...channels]
-    next[i] = { ...next[i], label: editVal.trim(), id: editVal.trim() }
+    next[i] = { ...next[i], label: editLabel.trim(), id: editLabel.trim(), channelId: editChannelId.trim() || undefined }
     onChange(next); setEditingIdx(null)
   }
   const remove = (i: number, e: React.MouseEvent) => {
@@ -63,8 +68,8 @@ function ChannelPills({ channels, onChange, disabled }: {
   const addChannel = () => {
     const label = newLabel.trim()
     if (!label) return
-    onChange([...channels, { id: label, label, enabled: true }])
-    setNewLabel(''); setAdding(false)
+    onChange([...channels, { id: label, label, enabled: true, channelId: newChannelId.trim() || undefined }])
+    setNewLabel(''); setNewChannelId(''); setAdding(false)
   }
 
   return (
@@ -76,19 +81,36 @@ function ChannelPills({ channels, onChange, disabled }: {
           !disabled && 'cursor-pointer',
         )}>
           {editingIdx === i ? (
-            <div className="flex items-center gap-1 px-2 py-1">
-              <input autoFocus value={editVal} onChange={e => setEditVal(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') confirmEdit(i); if (e.key === 'Escape') setEditingIdx(null) }}
-                className="w-32 h-5 px-1.5 text-[11px] bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400/40"
+            <div className="flex flex-col gap-1 px-2 py-1.5">
+              <input autoFocus value={editLabel} onChange={e => setEditLabel(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') setEditingIdx(null) }}
+                placeholder="Channel name"
+                className="w-44 h-5 px-1.5 text-[11px] bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400/40"
                 onClick={e => e.stopPropagation()} />
-              <button onClick={() => confirmEdit(i)} className="text-green-600 hover:bg-green-50 rounded p-0.5"><Check className="w-3 h-3" /></button>
-              <button onClick={() => setEditingIdx(null)} className="text-slate-400 hover:bg-slate-100 rounded p-0.5"><X className="w-3 h-3" /></button>
+              <div className="flex items-center gap-1">
+                <input value={editChannelId} onChange={e => setEditChannelId(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') confirmEdit(i); if (e.key === 'Escape') setEditingIdx(null) }}
+                  placeholder="UCxxxxx (optional)"
+                  className="w-44 h-5 px-1.5 text-[11px] bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400/40 font-mono"
+                  onClick={e => e.stopPropagation()} />
+                <button onClick={() => confirmEdit(i)} className="text-green-600 hover:bg-green-50 rounded p-0.5"><Check className="w-3 h-3" /></button>
+                <button onClick={() => setEditingIdx(null)} className="text-slate-400 hover:bg-slate-100 rounded p-0.5"><X className="w-3 h-3" /></button>
+              </div>
+              {!editChannelId && (
+                <span className="text-[9px] text-amber-500">⚠ Không có Channel ID → dùng Search API (kém chính xác)</span>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1.5" onClick={() => toggle(i)}>
               <input type="checkbox" checked={ch.enabled} onChange={() => toggle(i)}
                 className="accent-red-500 w-3.5 h-3.5 pointer-events-none" onClick={e => e.stopPropagation()} />
-              <span className="text-[11px] font-medium">{ch.label}</span>
+              <div className="flex flex-col">
+                <span className="text-[11px] font-medium leading-tight">{ch.label}</span>
+                {ch.channelId
+                  ? <span className="text-[9px] font-mono opacity-50 leading-tight">{ch.channelId.slice(0, 12)}…</span>
+                  : <span className="text-[9px] text-amber-500 leading-tight">no ID</span>
+                }
+              </div>
               {!disabled && (
                 <div className="hidden group-hover:flex items-center gap-0.5 ml-0.5">
                   <button onClick={e => startEdit(i, e)} className="p-0.5 text-slate-400 hover:text-slate-700 rounded"><Pencil className="w-2.5 h-2.5" /></button>
@@ -101,13 +123,18 @@ function ChannelPills({ channels, onChange, disabled }: {
       ))}
 
       {adding ? (
-        <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg">
-          <Youtube className="w-3 h-3 text-blue-400 shrink-0" />
-          <input autoFocus placeholder="Channel name..." value={newLabel} onChange={e => setNewLabel(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') addChannel(); if (e.key === 'Escape') { setAdding(false); setNewLabel('') } }}
-            className="w-36 h-5 px-1.5 text-[11px] bg-white border border-blue-300 rounded focus:outline-none" />
-          <button onClick={addChannel} className="text-green-600 hover:bg-green-50 rounded p-0.5"><Check className="w-3 h-3" /></button>
-          <button onClick={() => { setAdding(false); setNewLabel('') }} className="text-slate-400 rounded p-0.5"><X className="w-3 h-3" /></button>
+        <div className="flex flex-col gap-1 px-2 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
+          <input autoFocus placeholder="Channel name" value={newLabel} onChange={e => setNewLabel(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') { setAdding(false); setNewLabel(''); setNewChannelId('') } }}
+            className="w-44 h-5 px-1.5 text-[11px] bg-white border border-blue-300 rounded focus:outline-none" />
+          <div className="flex items-center gap-1">
+            <input placeholder="UCxxxxx (optional)" value={newChannelId} onChange={e => setNewChannelId(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addChannel(); if (e.key === 'Escape') { setAdding(false); setNewLabel(''); setNewChannelId('') } }}
+              className="w-44 h-5 px-1.5 text-[11px] font-mono bg-white border border-slate-200 rounded focus:outline-none" />
+            <button onClick={addChannel} className="text-green-600 hover:bg-green-50 rounded p-0.5"><Check className="w-3 h-3" /></button>
+            <button onClick={() => { setAdding(false); setNewLabel(''); setNewChannelId('') }} className="text-slate-400 rounded p-0.5"><X className="w-3 h-3" /></button>
+          </div>
+          <span className="text-[9px] text-slate-400">Channel ID giúp crawl chính xác hơn</span>
         </div>
       ) : !disabled && (
         <button onClick={() => setAdding(true)}

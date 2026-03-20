@@ -1,0 +1,38 @@
+{
+  "gemini": [
+    {
+      "name": "Key 1 (Primary)",
+      "key": "AIzaSy_YOUR_GEMINI_KEY_1",
+      "env": "GOOGLE_API_KEY",
+      "status": "active",
+      "lastUsed": null,
+      "quotaExceededAt": null
+    },
+    {
+      "name": "Key 2",
+      "key": "AIzaSy_YOUR_GEMINI_KEY_2",
+      "env": "GOOGLE_API_KEY_2",
+      "status": "active",
+      "lastUsed": null,
+      "quotaExceededAt": null
+    }
+  ],
+  "tts": [
+    {
+      "name": "TTS Key 1 (Primary)",
+      "key": "AIzaSy_YOUR_GEMINI_KEY_1",
+      "env": "GOOGLE_API_KEY_TTS",
+      "status": "active",
+      "lastUsed": null,
+      "quotaExceededAt": null
+    },
+    {
+      "name": "TTS Key 2",
+      "key": "AIzaSy_YOUR_GEMINI_KEY_2",
+      "env": "GOOGLE_API_KEY_TTS_2",
+      "status": "active",
+      "lastUsed": null,
+      "quotaExceededAt": null
+    }
+  ]
+}

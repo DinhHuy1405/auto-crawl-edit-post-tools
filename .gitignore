@@ -4,6 +4,9 @@ dist/
 *.log
 npm-debug.log*
 
+# Next.js build output
+app/.next/
+
 # Python
 __pycache__/
 *.pyc
@@ -13,8 +16,11 @@ env/
 
 # App Configs / Secrets
 api-keys.json
+.env
 edit-video/.env
-# social-upload-tools/social-tool-main/.env
+social-upload-tools/social-tool-main/.env
+social-upload-tools/social-tool-main/src/commands/.env
+app/.env.local
 
 # Temporary / Generated files
 temp_*
@@ -31,8 +37,3 @@ edit-video/assets/**/*.jpg
 edit-video/assets/f.mp4
 edit-video/assets/sound.mp3
 edit-video/assets/f/
-.env
-
-social-upload-tools/social-tool-main/src/commands/.env
-
-app/.env.local

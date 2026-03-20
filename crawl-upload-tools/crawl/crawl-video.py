@@ -454,15 +454,24 @@ JD_DEVICE = os.getenv('JD_DEVICE')
 # USE_JDOWNLOADER is now loaded from config.json above
 
 # Load channels từ config (chỉ lấy những channel enabled=true)
+# Mỗi channel có thể có channelId (UCxxxx) để tra cứu chính xác, hoặc dùng label để search
 _channels_cfg = CRAWLER_CONFIG.get('channels', [])
-channels = [ch['id'] for ch in _channels_cfg if ch.get('enabled', True)]
+_enabled_channels = [ch for ch in _channels_cfg if ch.get('enabled', False)]
+
+# channels list: ưu tiên channelId (UCxxxx) nếu có, fallback về id/label để search
+channels = [ch.get('channelId') or ch.get('id') for ch in _enabled_channels]
+channels = [c for c in channels if c]  # bỏ None/empty
 
 if not channels:
     print("⚠️ Không có channel nào được enable trong config.json! Workflow có thể không chạy được.")
-    # Fallback to BLV Anh Quân Discovery only if totally forced
-    # channels = ["BLV Anh Quân Discovery"]
 
-print(f"📺 Channels sẽ crawl ({len(channels)}): {', '.join(channels)}")
+for ch in _enabled_channels:
+    cid = ch.get('channelId', '')
+    label = ch.get('label') or ch.get('id', '')
+    if cid:
+        print(f"📺 [{label}] → dùng Channel ID: {cid}")
+    else:
+        print(f"📺 [{label}] → ⚠ không có Channel ID, sẽ dùng Search API (kém chính xác)")
 
 api_key = os.getenv('YOUTUBE_API_KEY')
 root_save_folder = OUTPUT_DIR  # Use config value instead of hardcoded
