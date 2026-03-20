@@ -159,20 +159,7 @@ export class PostThreadsCommand extends CommandRunner {
       if (input.video_path) {
         console.log(`📹 Uploading video: ${input.video_path}`);
         await this.uploadMedia(page, input.video_path);
-        
-        // Wait for video upload to complete - look for upload progress to disappear
-        console.log('⏳ Waiting for video upload to complete...');
-        const uploadProgress = page.locator('[role="progressbar"]').first();
-        try {
-          // Wait for progress bar to disappear (max 60 seconds)
-          await uploadProgress.waitFor({ state: 'hidden', timeout: 60000 }).catch(() => {
-            console.log('⚠️  Progress bar not found, video may already be uploaded');
-          });
-          await page.waitForTimeout(2000); // Extra wait for UI to settle
-          console.log('✅ Video upload completed');
-        } catch (e) {
-          console.log('⚠️  Timeout waiting for upload completion, continuing...');
-        }
+        await this.waitForVideoUploadComplete(page);
       } else if (input.image_paths && input.image_paths.length > 0) {
         for (const imagePath of input.image_paths) {
           console.log(`🖼️  Uploading image: ${imagePath}`);
@@ -331,18 +318,9 @@ export class PostThreadsCommand extends CommandRunner {
         // Don't throw immediately, check if UI feedback exists
       }
 
-      // Wait for posting to complete
-      const postingIndicator = page.locator('text=Posting..., text=Đang đăng...').first();
-      const isPostingVisible = await postingIndicator.isVisible({ timeout: 5000 }).catch(() => false);
-      
-      if (isPostingVisible) {
-        console.log('⏳ Posting in progress... (Waiting up to 5 minutes for video processing)');
-        // Video processing can take time (transcoding)
-        await postingIndicator.waitFor({ state: 'detached', timeout: 300000 });
-      }
-
-      // Wait a bit for the post to complete
-      await page.waitForTimeout(5000);
+      // Wait for posting to complete - poll for "Posting..." indicator then wait for it to go away
+      console.log('⏳ Waiting for post to finish publishing...');
+      await this.waitForPostingComplete(page);
 
       // Verify posting success by checking for error messages
       const errorMessage = page.locator('text=Something went wrong').first();
@@ -391,6 +369,116 @@ export class PostThreadsCommand extends CommandRunner {
       console.error('Error posting thread:', error);
       throw error;
     }
+  }
+
+  /**
+   * Wait for video upload + server-side processing to finish before posting.
+   * Threads shows a progress bar or thumbnail preview while processing.
+   * We wait until all known "uploading" indicators are gone AND the Post button is enabled.
+   */
+  private async waitForVideoUploadComplete(page: Page) {
+    console.log('⏳ Waiting for video upload & processing to complete...');
+    const MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes max
+    const POLL_MS = 1500;
+    const deadline = Date.now() + MAX_WAIT_MS;
+
+    while (Date.now() < deadline) {
+      // Check various upload-in-progress indicators
+      const indicators = [
+        '[role="progressbar"]',
+        '[aria-label*="upload" i]',
+        '[aria-label*="uploading" i]',
+        '[aria-label*="processing" i]',
+        'svg[aria-label*="Loading"]',
+        // Threads shows a spinner inside the media preview while processing
+        'div[aria-label*="Media"] [role="progressbar"]',
+      ];
+
+      let uploading = false;
+      for (const sel of indicators) {
+        const el = page.locator(sel).first();
+        const visible = await el.isVisible({ timeout: 300 }).catch(() => false);
+        if (visible) { uploading = true; break; }
+      }
+
+      if (!uploading) {
+        // Double-check: Post button should now be enabled/not aria-disabled
+        const postBtn = page.locator('div[role="button"]:has-text("Post"), div[role="button"]:has-text("Đăng"), button:has-text("Post"), button:has-text("Đăng")').first();
+        const btnVisible = await postBtn.isVisible({ timeout: 500 }).catch(() => false);
+        if (btnVisible) {
+          const ariaDisabled = await postBtn.getAttribute('aria-disabled').catch(() => null);
+          if (ariaDisabled !== 'true') {
+            console.log('✅ Video upload complete — Post button is ready');
+            await page.waitForTimeout(1500); // small settle delay
+            return;
+          }
+        } else {
+          // Button not visible yet but no progress indicator — wait a bit more
+          await page.waitForTimeout(POLL_MS);
+          continue;
+        }
+      }
+
+      const elapsed = Math.round((Date.now() - (deadline - MAX_WAIT_MS)) / 1000);
+      console.log(`⏳ Still uploading/processing... (${elapsed}s elapsed)`);
+      await page.waitForTimeout(POLL_MS);
+    }
+
+    console.log('⚠️  Upload wait timed out after 10 minutes — proceeding anyway');
+  }
+
+  /**
+   * After clicking Post, wait for Threads to finish publishing the post.
+   * Threads shows "Posting..." text during submission, then navigates away or shows success.
+   */
+  private async waitForPostingComplete(page: Page) {
+    const MAX_WAIT_MS = 8 * 60 * 1000; // 8 minutes (video transcoding can be slow)
+    const POLL_MS = 1000;
+    const deadline = Date.now() + MAX_WAIT_MS;
+
+    // First, wait for the "Posting..." indicator to appear (up to 10s)
+    const postingSelectors = [
+      'text=Posting...',
+      'text=Đang đăng...',
+      '[aria-label*="Posting"]',
+      '[aria-label*="posting" i]',
+    ];
+
+    let postingAppeared = false;
+    const detectDeadline = Date.now() + 10000;
+    while (Date.now() < detectDeadline) {
+      for (const sel of postingSelectors) {
+        const visible = await page.locator(sel).first().isVisible({ timeout: 300 }).catch(() => false);
+        if (visible) { postingAppeared = true; break; }
+      }
+      if (postingAppeared) break;
+      await page.waitForTimeout(500);
+    }
+
+    if (postingAppeared) {
+      console.log('⏳ Post submission in progress (video being processed by Threads)...');
+      // Now wait for it to disappear
+      while (Date.now() < deadline) {
+        let anyVisible = false;
+        for (const sel of postingSelectors) {
+          const visible = await page.locator(sel).first().isVisible({ timeout: 300 }).catch(() => false);
+          if (visible) { anyVisible = true; break; }
+        }
+        if (!anyVisible) {
+          console.log('✅ Posting complete');
+          break;
+        }
+        const elapsed = Math.round((Date.now() - (deadline - MAX_WAIT_MS)) / 1000);
+        console.log(`⏳ Still posting... (${elapsed}s elapsed)`);
+        await page.waitForTimeout(POLL_MS);
+      }
+    } else {
+      console.log('ℹ️  "Posting..." indicator not detected — waiting 8s as fallback');
+      await page.waitForTimeout(8000);
+    }
+
+    // Final settle: make sure UI has fully transitioned before browser closes
+    await page.waitForTimeout(3000);
   }
 
   private async uploadMedia(page: Page, mediaPath: string) {
