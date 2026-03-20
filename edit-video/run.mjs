@@ -41,8 +41,12 @@ const CONFIG = {
         videosJson: path.join(__dirname, "videos.json"),
         defaultMainVideo: path.join(__dirname, SHARED_CONFIG.paths.templateDir, SHARED_CONFIG.templates.mainVideo),
         defaultTemplateVideo: path.join(__dirname, SHARED_CONFIG.paths.templateDir, SHARED_CONFIG.templates.templateVideo),
-        defaultSoundAudio: path.join(__dirname, SHARED_CONFIG.paths.publicDir, SHARED_CONFIG.templates.backgroundMusic),
-        logo: path.join(__dirname, SHARED_CONFIG.paths.publicDir, SHARED_CONFIG.templates.logo)
+        defaultSoundAudio: path.isAbsolute(SHARED_CONFIG.templates.backgroundMusic)
+            ? SHARED_CONFIG.templates.backgroundMusic
+            : path.join(__dirname, SHARED_CONFIG.paths.publicDir, SHARED_CONFIG.templates.backgroundMusic),
+        logo: path.isAbsolute(SHARED_CONFIG.templates.logo)
+            ? SHARED_CONFIG.templates.logo
+            : path.join(__dirname, SHARED_CONFIG.paths.publicDir, SHARED_CONFIG.templates.logo)
     },
     output: {
         baseDir: SHARED_CONFIG.paths.outputDir,

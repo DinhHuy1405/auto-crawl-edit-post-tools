@@ -26,8 +26,8 @@
   "templates": {
     "mainVideo": "f.mp4",
     "templateVideo": "f.mp4",
-    "backgroundMusic": "/Users/nguyendinhhuy/Desktop/Personal Project/auto-crawl-edit-post-tools/edit-video/assets/sound.mp3",
-    "logo": "/Users/nguyendinhhuy/Desktop/Personal Project/auto-crawl-edit-post-tools/edit-video/assets/logo.png"
+    "backgroundMusic": "sound.mp3",
+    "logo": "logo.png"
   },
   "layout": {
     "templateY": 0,
