@@ -144,9 +144,124 @@ async function generateTitleImage(title, outputPath, width = CONFIG.layout.title
 }
 
 // ==========================================
+// 🎞️ SOURCE MODE — builds FFmpeg main video input args + filter segment
+// ==========================================
+
+/**
+ * Returns { inputArgs: string, filterSegment: string, outputLabel: string }
+ * inputArgs  — the -ss/-i flags for the main video input(s)
+ * filterSegment — filter_complex lines to produce [trimmed_main_video]
+ * For random_clips / multi_clip modes multiple inputs are concatenated.
+ */
+async function buildMainVideoSource(mainVideoPath, targetDuration) {
+    const sm = SHARED_CONFIG.sourceMode || {};
+    const mode = sm.mode || 'sequential';
+
+    if (mode === 'sequential') {
+        const skip = sm.sequential?.skipSec ?? SHARED_CONFIG.layout?.mainVideoSkip ?? 180;
+        return {
+            inputArgs: `-ss ${skip} -i "${mainVideoPath}"`,
+            filterSegment: `[0:v]trim=start=0:duration=${targetDuration},setpts=PTS-STARTPTS[trimmed_main_video];\n[0:a]atrim=start=0:duration=${targetDuration},asetpts=PTS-STARTPTS,volume=${SHARED_CONFIG.audio.volumes.mainVideo}[main_audio_proc]`,
+            extraInputCount: 0,
+        };
+    }
+
+    if (mode === 'first_n') {
+        const dur = sm.firstN?.durationSec ?? targetDuration;
+        return {
+            inputArgs: `-i "${mainVideoPath}"`,
+            filterSegment: `[0:v]trim=start=0:duration=${Math.min(dur, targetDuration)},setpts=PTS-STARTPTS[trimmed_main_video];\n[0:a]atrim=start=0:duration=${Math.min(dur, targetDuration)},asetpts=PTS-STARTPTS,volume=${SHARED_CONFIG.audio.volumes.mainVideo}[main_audio_proc]`,
+            extraInputCount: 0,
+        };
+    }
+
+    if (mode === 'custom_range') {
+        const start = sm.customRange?.startSec ?? 0;
+        const end = sm.customRange?.endSec ?? targetDuration;
+        const clipDur = Math.min(end - start, targetDuration);
+        return {
+            inputArgs: `-ss ${start} -t ${clipDur} -i "${mainVideoPath}"`,
+            filterSegment: `[0:v]trim=start=0:duration=${clipDur},setpts=PTS-STARTPTS[trimmed_main_video];\n[0:a]atrim=start=0:duration=${clipDur},asetpts=PTS-STARTPTS,volume=${SHARED_CONFIG.audio.volumes.mainVideo}[main_audio_proc]`,
+            extraInputCount: 0,
+        };
+    }
+
+    if (mode === 'random_clips' || mode === 'multi_clip') {
+        // Get total duration of main video to pick valid random ranges
+        const totalDur = await getMediaDurationInSeconds(mainVideoPath);
+        let clips = [];
+
+        if (mode === 'multi_clip' && Array.isArray(sm.multiClip?.clips) && sm.multiClip.clips.length > 0) {
+            clips = sm.multiClip.clips; // [{ startSec, durationSec }, ...]
+        } else {
+            // random_clips: pick random non-overlapping segments
+            const minClip = sm.randomClips?.minClipSec ?? 8;
+            const maxClip = sm.randomClips?.maxClipSec ?? 20;
+            const avoidFirst = sm.randomClips?.avoidFirstSec ?? 60;
+            const avoidLast = sm.randomClips?.avoidLastSec ?? 30;
+            const safeStart = avoidFirst;
+            const safeEnd = Math.max(safeStart + maxClip, totalDur - avoidLast);
+
+            let remaining = targetDuration;
+            let usedRanges = [];
+            let attempts = 0;
+            while (remaining > 0 && attempts < 200) {
+                attempts++;
+                const clipDur = Math.min(remaining, minClip + Math.floor(Math.random() * (maxClip - minClip + 1)));
+                const maxStart = safeEnd - clipDur;
+                if (maxStart <= safeStart) break;
+                const start = safeStart + Math.floor(Math.random() * (maxStart - safeStart));
+                // Check no overlap with existing clips (avoid reuse)
+                const overlaps = usedRanges.some(r => start < r.end && (start + clipDur) > r.start);
+                if (!overlaps) {
+                    clips.push({ startSec: start, durationSec: clipDur });
+                    usedRanges.push({ start, end: start + clipDur });
+                    remaining -= clipDur;
+                }
+            }
+            // Sort clips chronologically for natural flow
+            clips.sort((a, b) => a.startSec - b.startSec);
+        }
+
+        if (clips.length === 0) {
+            // Fallback to sequential
+            console.warn('   ⚠️ No clips generated for random mode, falling back to sequential');
+            return {
+                inputArgs: `-ss 60 -i "${mainVideoPath}"`,
+                filterSegment: `[0:v]trim=start=0:duration=${targetDuration},setpts=PTS-STARTPTS[trimmed_main_video];\n[0:a]atrim=start=0:duration=${targetDuration},asetpts=PTS-STARTPTS,volume=${SHARED_CONFIG.audio.volumes.mainVideo}[main_audio_proc]`,
+                extraInputCount: 0,
+            };
+        }
+
+        // Each clip is a separate -ss -t -i input starting at index 0..N-1
+        // All share the same mainVideoPath — FFmpeg handles separate seeks per input
+        const inputArgs = clips.map(c => `-ss ${c.startSec} -t ${c.durationSec} -i "${mainVideoPath}"`).join(' ');
+
+        // Build concat filter: [0:v][1:v]...[N:v] concat=n=N:v=1:a=1
+        const n = clips.length;
+        const vLabels = clips.map((_, i) => `[${i}:v]`).join('');
+        const aLabels = clips.map((_, i) => `[${i}:a]`).join('');
+        const filterSegment = `${vLabels}concat=n=${n}:v=1:a=0[trimmed_main_video];\n${aLabels}concat=n=${n}:v=0:a=1[concat_audio];\n[concat_audio]atrim=start=0:duration=${targetDuration},asetpts=PTS-STARTPTS,volume=${SHARED_CONFIG.audio.volumes.mainVideo}[main_audio_proc]`;
+
+        return {
+            inputArgs,
+            filterSegment,
+            extraInputCount: n, // clips.length inputs used for main video (indices 0..n-1)
+        };
+    }
+
+    // Default fallback
+    return {
+        inputArgs: `-ss 180 -i "${mainVideoPath}"`,
+        filterSegment: `[0:v]trim=start=0:duration=${targetDuration},setpts=PTS-STARTPTS[trimmed_main_video];\n[0:a]atrim=start=0:duration=${targetDuration},asetpts=PTS-STARTPTS,volume=${SHARED_CONFIG.audio.volumes.mainVideo}[main_audio_proc]`,
+        extraInputCount: 0,
+    };
+}
+
+// ==========================================
 // 🎬 FFMPEG PIPELINE
 // ==========================================
-function generateFFmpegCommand(inputs, outputVideo, duration) {
+async function generateFFmpegCommand(inputs, outputVideo, duration) {
     const { mainVideo, templateVideo, soundAudio, voiceAudio, logo, titleImage } = inputs;
     const {
         templateX, templateY,
@@ -155,87 +270,99 @@ function generateFFmpegCommand(inputs, outputVideo, duration) {
         logoW: cfgLogoW, logoH: cfgLogoH, logoScale,
         titleY = 1150, titleW = 1440, titleH = 300, titleDuration = 5,
     } = CONFIG.layout;
-    // logoW/logoH: prefer explicit fields, fall back to logoScale string
     const [logoW, logoH] = (cfgLogoW && cfgLogoH)
         ? [cfgLogoW, cfgLogoH]
         : logoScale.split(":").map(Number);
-    
+
+    // ── Source Mode: build main video input args + filter segment ──────────────
+    const sourceResult = await buildMainVideoSource(mainVideo, duration);
+    const { inputArgs: mainInputArgs, filterSegment: mainFilterSegment, extraInputCount } = sourceResult;
+
+    // Input index offset: main video occupies indices 0..(extraInputCount-1) for multi-clip,
+    // or just index 0 for single-input modes.
+    // After main video inputs: templateVideo, soundAudio, voiceAudio, [titleImage], logo
+    const tplIdx   = extraInputCount > 0 ? extraInputCount     : 1;
+    const musicIdx = tplIdx + 1;
+    const voiceIdx = musicIdx + 1;
+    // title and logo indices depend on whether titleImage exists
+    const titleIdx = voiceIdx + 1;
+    const logoIdx  = titleImage && fs.existsSync(titleImage) ? titleIdx + 1 : titleIdx;
+
     const filterComplexParts = [];
-    
-    // 1. Process Main Video (Gameplay)
-    filterComplexParts.push(
-        `[0:v]trim=start=0:duration=${duration},setpts=PTS-STARTPTS[trimmed_main_video]`
-    );
-    
-    // 2. Process Audio Streams with Individual Volume Controls
-    const mainVol = CONFIG.audio.volumes.mainVideo;
+
+    // 1. Main video (from source mode) — produces [trimmed_main_video] and [main_audio_proc]
+    filterComplexParts.push(mainFilterSegment);
+
+    // 2. Audio: music + voice (main audio already handled inside mainFilterSegment)
     const musicVol = CONFIG.audio.volumes.backgroundMusic;
     const voiceVol = CONFIG.audio.volumes.voiceNarration;
-    
     filterComplexParts.push(
-        // Main video audio with volume control
-        `[0:a]volume=${mainVol}[main_audio_proc]`,
-        // Background music: handled by -stream_loop input arg, just trim & scale
-        `[2:a]atrim=start=0:duration=${duration},asetpts=PTS-STARTPTS[sound_trimmed]`,
+        `[${musicIdx}:a]atrim=start=0:duration=${duration},asetpts=PTS-STARTPTS[sound_trimmed]`,
         `[sound_trimmed]volume=${musicVol}[processed_sound]`,
-        // Voice narration with volume control
-        `[3:a]atrim=start=0:duration=${duration},asetpts=PTS-STARTPTS[voice_trimmed]`,
+        `[${voiceIdx}:a]atrim=start=0:duration=${duration},asetpts=PTS-STARTPTS[voice_trimmed]`,
         `[voice_trimmed]volume=${voiceVol}[processed_voice]`
     );
 
-    // 3. Process Template Video (Crawled Video)
-    filterComplexParts.push(
-        `[1:v]scale=${templateW}:${templateH}[scaled_template]`,
-        `[scaled_template]split=4[orig_template][tl_blur_in][tr_blur_in][bottom_blur_in]`,
-        `[tl_blur_in]gblur=sigma=30[tl_blurred_full]`,
-        `[tl_blurred_full]crop=w=210:h=210:x=0:y=0[tl_blurred_cropped]`,
-        `[tr_blur_in]gblur=sigma=30[tr_blurred_full]`,
-        `[tr_blurred_full]crop=w=350:h=180:x=1130:y=-30[tr_blurred_cropped]`,
-        `[bottom_blur_in]gblur=sigma=30[bottom_blurred_full]`,
-        `[bottom_blurred_full]crop=w=600:h=80:x=(1440-600)/2:y='(ih-200)'[bottom_blurred_cropped]`,
-        `[orig_template][tl_blurred_cropped]overlay=x=0:y=0[temp_template1]`,
-        `[temp_template1][tr_blurred_cropped]overlay=x=1130:y=-30[temp_template2]`,
-        `[temp_template2][bottom_blurred_cropped]overlay=x=(1440-600)/2:y='(main_h-100)'[final_blurred_template]`
-    );
-    
-    // Overlay Template onto Main Video
+    // 3. Template video with blur zones
+    const blurZones = Array.isArray(CONFIG.layout.blurZones) ? CONFIG.layout.blurZones : [];
+    filterComplexParts.push(`[${tplIdx}:v]scale=${templateW}:${templateH}[scaled_template]`);
+
+    if (blurZones.length === 0) {
+        filterComplexParts.push(`[scaled_template]null[final_blurred_template]`);
+    } else {
+        const splitCount = blurZones.length + 1;
+        const splitLabels = [`[orig_template]`, ...blurZones.map((_, i) => `[blur_in_${i}]`)].join('');
+        filterComplexParts.push(`[scaled_template]split=${splitCount}${splitLabels}`);
+        blurZones.forEach((zone, i) => {
+            const cropX = Math.max(0, zone.x), cropY = Math.max(0, zone.y);
+            filterComplexParts.push(
+                `[blur_in_${i}]gblur=sigma=${zone.sigma}[blurred_full_${i}]`,
+                `[blurred_full_${i}]crop=w=${zone.w}:h=${zone.h}:x=${cropX}:y=${cropY}[blurred_crop_${i}]`
+            );
+        });
+        blurZones.forEach((zone, i) => {
+            const inStream  = i === 0 ? 'orig_template' : `temp_tpl_${i - 1}`;
+            const outStream = i === blurZones.length - 1 ? 'final_blurred_template' : `temp_tpl_${i}`;
+            filterComplexParts.push(
+                `[${inStream}][blurred_crop_${i}]overlay=x=${Math.max(0,zone.x)}:y=${Math.max(0,zone.y)}[${outStream}]`
+            );
+        });
+    }
+
+    // 4. Composite: main + template
     filterComplexParts.push(
         `[trimmed_main_video][final_blurred_template]overlay=x=${templateX}:y=${templateY}[video_with_template]`
     );
 
-    // 4. Add Title Image overlay (thay đổi vị trí nằm giữa viền của video được crawl và gameplay)
+    // 5. Title overlay
     let videoStream = 'video_with_template';
-    let nextInput = 4; // Start from input 4 (logo is at 4, title would be at 5)
-    
     if (titleImage && fs.existsSync(titleImage)) {
         filterComplexParts.push(
-            `[video_with_template][${nextInput}:v]overlay=x=0:y=${titleY}:enable='between(t,0,${titleDuration})'[video_with_title]`
+            `[video_with_template][${titleIdx}:v]overlay=x=0:y=${titleY}:enable='between(t,0,${titleDuration})'[video_with_title]`
         );
         videoStream = 'video_with_title';
-        nextInput = 5;
     }
 
-    // 5. Add Logo overlay
+    // 6. Logo overlay
     filterComplexParts.push(
-        `[${nextInput}:v]scale=${logoW}:${logoH},format=rgba[scaled_logo]`,
+        `[${logoIdx}:v]scale=${logoW}:${logoH},format=rgba[scaled_logo]`,
         `[${videoStream}][scaled_logo]overlay=x=${logoX}:y=${logoY}:enable='between(t,0,${duration})'[final_video_output_stream]`
     );
 
-    // 6. Audio Mixer with all 3 streams
+    // 7. Audio mix
     filterComplexParts.push(
         `[main_audio_proc][processed_sound][processed_voice]amix=inputs=3:duration=longest[outa]`
     );
 
     const filterComplex = filterComplexParts.join(";");
 
-    // Build input string dynamically based on whether title image exists
-    let inputsStr = `-y -ss 180 -i "${mainVideo}" -i "${templateVideo}" -stream_loop -1 -i "${soundAudio}" -i "${voiceAudio}"`;
-    
-    if (titleImage && fs.existsSync(titleImage)) {
-        inputsStr += ` -i "${titleImage}"`;
-    }
-    
+    // Build full input string
+    let inputsStr = `-y ${mainInputArgs} -i "${templateVideo}" -stream_loop -1 -i "${soundAudio}" -i "${voiceAudio}"`;
+    if (titleImage && fs.existsSync(titleImage)) inputsStr += ` -i "${titleImage}"`;
     inputsStr += ` -i "${logo}"`;
+
+    const sm = SHARED_CONFIG.sourceMode?.mode ?? 'sequential';
+    console.log(`   🎞️  Source mode: ${sm} | clips: ${extraInputCount > 1 ? extraInputCount : 1}`);
 
     return `ffmpeg ${inputsStr} -filter_complex "${filterComplex}" -map "[final_video_output_stream]" -map "[outa]" -t ${duration} -c:a ${CONFIG.audio.codec} -b:a ${CONFIG.audio.bitrate} -c:v ${CONFIG.video.codec} -preset ${CONFIG.video.preset} "${outputVideo}"`;
 }
@@ -342,7 +469,7 @@ async function processBatch() {
         inputs.titleImage = titleImagePath;
 
         // Render target
-        const ffmpegCommand = generateFFmpegCommand(inputs, outputVideoPath, targetDuration);
+        const ffmpegCommand = await generateFFmpegCommand(inputs, outputVideoPath, targetDuration);
         const success = await executeFFmpeg(ffmpegCommand);
 
         if (success && fs.existsSync(outputVideoPath)) {

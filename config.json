@@ -30,23 +30,72 @@
     "logo": "logo.png"
   },
   "layout": {
-    "templateY": 0,
-    "logoX": 109,
-    "logoY": 372,
+    "templateY": 476,
+    "logoX": 56,
+    "logoY": 198,
     "logoW": 200,
-    "logoH": 80,
-    "titleY": 1687,
+    "logoH": 146,
+    "titleY": 1469,
     "templateX": 0,
-    "logoScale": "200:80",
+    "logoScale": "200:146",
     "subtitleY": 800,
     "subtitleSize": 42,
     "subtitleColor": "#FFFFFF",
     "subtitleOutline": "#000000",
-    "titleDuration": 5,
+    "titleDuration": 30,
     "templateW": 1440,
     "templateH": -1,
-    "titleW": 1440,
-    "titleH": 300
+    "titleW": 1435,
+    "titleH": 300,
+    "titleX": 5,
+    "mainVideoSkip": 180,
+    "blurZones": [
+      { "id": "tl", "label": "Top-Left",   "x": 0,    "y": -30,  "w": 210, "h": 210, "sigma": 30 },
+      { "id": "tr", "label": "Top-Right",  "x": 1130, "y": -30,  "w": 350, "h": 180, "sigma": 30 },
+      { "id": "bt", "label": "Bottom-Ctr", "x": 420,  "y": -200, "w": 600, "h": 80,  "sigma": 30 }
+    ]
+  },
+  "presets": [
+    {
+      "id": "standard",
+      "name": "Standard",
+      "description": "Template video ở giữa, title ở dưới, logo góc trên trái",
+      "layout": {
+        "templateX": 0, "templateY": 476, "templateW": 1440, "templateH": -1,
+        "logoX": 56, "logoY": 198, "logoW": 200, "logoH": 146,
+        "titleX": 5, "titleY": 1469, "titleW": 1435, "titleH": 300,
+        "titleDuration": 30, "mainVideoSkip": 180
+      },
+      "blurZones": [
+        { "id": "tl", "label": "Top-Left",   "x": 0,    "y": -30,  "w": 210, "h": 210, "sigma": 30 },
+        { "id": "tr", "label": "Top-Right",  "x": 1130, "y": -30,  "w": 350, "h": 180, "sigma": 30 },
+        { "id": "bt", "label": "Bottom-Ctr", "x": 420,  "y": -200, "w": 600, "h": 80,  "sigma": 30 }
+      ],
+      "audio": { "mainVideo": 0, "backgroundMusic": 1.45, "voiceNarration": 1.75 }
+    }
+  ],
+  "sourceMode": {
+    "mode": "random_clips",
+    "sequential": {
+      "skipSec": 180
+    },
+    "randomClips": {
+      "minClipSec": 8,
+      "maxClipSec": 20,
+      "avoidFirstSec": 60,
+      "avoidLastSec": 30,
+      "seed": null
+    },
+    "firstN": {
+      "durationSec": 120
+    },
+    "customRange": {
+      "startSec": 0,
+      "endSec": 120
+    },
+    "multiClip": {
+      "clips": []
+    }
   },
   "tts": {
     "provider": "gemini",
@@ -76,7 +125,7 @@
         "id": "BLV Anh Quân Discovery",
         "label": "BLV Anh Quân Discovery",
         "channelId": "",
-        "enabled": false
+        "enabled": true
       },
       {
         "id": "Củ Đậu Story",
