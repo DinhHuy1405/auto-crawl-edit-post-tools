@@ -6,7 +6,7 @@ import {
   Play, Square, Terminal, RotateCcw, GitBranch,
   CheckCircle2, XCircle, Loader2, Clock, ChevronRight,
   AlertCircle, Layers, Plus, Link as LinkIcon,
-  Pencil, Trash2, Check, X,
+  Pencil, Trash2, Check, X, Video, EyeOff,
 } from 'lucide-react'
 import {
   TikTokIcon, FacebookIcon, ThreadsIcon, YouTubeIcon,
@@ -16,6 +16,11 @@ type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped'
 interface Step { id: string; label: string; description: string; status: StepStatus; duration?: number }
 interface LogLine { message: string; level: string; ts: string }
 interface Channel { id: string; label: string; enabled: boolean; channelId?: string }
+interface UploadQueueVideo {
+  id: string; title: string; video_name: string; file_path: string
+  skip?: boolean; upload_date?: string; created_at: string; status: string
+  threads: { uploaded: boolean }; tiktok: { uploaded: boolean }; facebook: { uploaded: boolean }
+}
 
 const STEPS: Omit<Step, 'status'>[] = [
   { id: 'crawl',          label: 'Crawl Videos',    description: 'Tải video từ YouTube hôm qua'        },
@@ -156,6 +161,7 @@ export default function WorkflowPage() {
   const [manualUrl, setManualUrl] = useState('')
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
   const [configLoaded, setConfigLoaded] = useState(false)
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueVideo[]>([])
 
   const logScrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -171,6 +177,19 @@ export default function WorkflowPage() {
       if (Array.isArray(cfgPlatforms) && cfgPlatforms.length > 0) setPlatforms(cfgPlatforms as string[])
       setConfigLoaded(true)
     }).catch(() => { setConfigLoaded(true) })
+  }, [])
+
+  const fetchUploadQueue = useCallback(() => {
+    fetch('/api/upload?today=1').then(r => r.json()).then(data => {
+      if (Array.isArray(data.videos)) setUploadQueue(data.videos)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => { fetchUploadQueue() }, [fetchUploadQueue])
+
+  const toggleSkipVideo = useCallback(async (id: string, skip: boolean) => {
+    await fetch('/api/upload', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, skip }) })
+    setUploadQueue(prev => prev.map(v => v.id === id ? { ...v, skip } : v))
   }, [])
 
   const handleChannelsChange = useCallback((newChannels: Channel[]) => {
@@ -250,6 +269,8 @@ export default function WorkflowPage() {
             if (ev.type === 'done') {
               ok = ev.success
               updStep(stepId, ok ? 'done' : 'error', Math.round((Date.now() - startTimeRef.current[stepId]) / 1000))
+              // Refresh upload queue after prepare-upload step
+              if (stepId === 'prepare-upload' && ok) fetchUploadQueue()
             }
           } catch {}
         }
@@ -259,7 +280,7 @@ export default function WorkflowPage() {
       if ((err as Error).name === 'AbortError') { updStep(stepId, 'skipped'); return false }
       updStep(stepId, 'error'); addLog(`Error: ${String(err)}`, 'error'); return false
     }
-  }, [runId, addLog, updStep])
+  }, [runId, addLog, updStep, fetchUploadQueue])
 
   const runFull = useCallback(async () => {
     setIsRunning(true); setLogs([]); setSteps(STEPS.map(s => ({ ...s, status: 'pending' })))
@@ -410,6 +431,49 @@ export default function WorkflowPage() {
           </div>
         </div>
       </div>
+
+      {/* Upload Video Queue */}
+      {uploadQueue.length > 0 && (
+        <div className="section-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+            <Video className="w-4 h-4 text-slate-400" />
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Videos sẽ upload hôm nay</p>
+            <span className="ml-auto text-[10px] text-slate-400">
+              {uploadQueue.filter(v => !v.skip).length}/{uploadQueue.length} video
+            </span>
+            <button onClick={fetchUploadQueue} className="text-[10px] text-slate-400 hover:text-slate-600 px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors">
+              Refresh
+            </button>
+          </div>
+          <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+            {uploadQueue.map(v => (
+              <div key={v.id} className={cn('flex items-center gap-3 px-4 py-2.5 transition-colors', v.skip ? 'bg-slate-50 opacity-50' : 'bg-white hover:bg-slate-50/60')}>
+                <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', v.skip ? 'bg-slate-300' : 'bg-green-400')} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium text-slate-700 truncate">{v.title || v.video_name}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={cn('text-[9px] px-1 rounded', v.threads?.uploaded ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400')}>Threads</span>
+                    <span className={cn('text-[9px] px-1 rounded', v.tiktok?.uploaded ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400')}>TikTok</span>
+                    <span className={cn('text-[9px] px-1 rounded', v.facebook?.uploaded ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400')}>Facebook</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleSkipVideo(v.id, !v.skip)}
+                  title={v.skip ? 'Bỏ qua — click để bật lại' : 'Click để bỏ qua video này'}
+                  className={cn(
+                    'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors shrink-0',
+                    v.skip
+                      ? 'bg-slate-100 text-slate-500 hover:bg-green-50 hover:text-green-700'
+                      : 'bg-red-50 text-red-500 hover:bg-red-100'
+                  )}
+                >
+                  {v.skip ? <><Check className="w-3 h-3" />Bật lại</> : <><EyeOff className="w-3 h-3" />Bỏ qua</>}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="section-card p-4">

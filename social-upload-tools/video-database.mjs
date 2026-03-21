@@ -49,8 +49,28 @@ export function saveDatabase(data) {
 }
 
 /**
+ * Returns today's date as YYYY-MM-DD in local timezone
+ */
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Check if a video was created/scheduled today
+ */
+function isToday(video) {
+  const today = todayStr();
+  // upload_date is set by prepare-upload.mjs
+  if (video.upload_date) return video.upload_date === today;
+  // Fallback: check created_at date portion
+  if (video.created_at) return video.created_at.startsWith(today);
+  return false;
+}
+
+/**
  * Get videos ready for Facebook upload
- * Condition: status = "ready" AND facebook.uploaded = false AND file exists
+ * Condition: status = "ready" AND facebook.uploaded = false AND file exists AND created today AND not skipped
  */
 export function getVideosForFacebook() {
   const db = loadDatabase();
@@ -58,6 +78,8 @@ export function getVideosForFacebook() {
 
   return db.filter((video) => {
     if (video.status !== 'ready') return false;
+    if (video.skip === true) return false;
+    if (!isToday(video)) return false;
     if (video.facebook?.uploaded === true) return false;
     if (!video.file_path || !fs.existsSync(video.file_path)) return false;
     return true;
@@ -66,7 +88,7 @@ export function getVideosForFacebook() {
 
 /**
  * Get videos ready for TikTok upload
- * Condition: status = "ready" AND tiktok.uploaded = false AND file exists
+ * Condition: status = "ready" AND tiktok.uploaded = false AND file exists AND created today AND not skipped
  */
 export function getVideosForTiktok() {
   const db = loadDatabase();
@@ -74,6 +96,8 @@ export function getVideosForTiktok() {
 
   return db.filter((video) => {
     if (video.status !== 'ready') return false;
+    if (video.skip === true) return false;
+    if (!isToday(video)) return false;
     if (video.tiktok?.uploaded === true) return false;
     if (!video.file_path || !fs.existsSync(video.file_path)) return false;
     return true;
@@ -82,7 +106,7 @@ export function getVideosForTiktok() {
 
 /**
  * Get videos ready for Threads upload
- * Condition: status = "ready" AND threads.uploaded = false AND file exists
+ * Condition: status = "ready" AND threads.uploaded = false AND file exists AND created today AND not skipped
  */
 export function getVideosForThreads() {
   const db = loadDatabase();
@@ -90,14 +114,16 @@ export function getVideosForThreads() {
 
   return db.filter((video) => {
     if (video.status !== 'ready') return false;
+    if (video.skip === true) return false;
+    if (!isToday(video)) return false;
     if (video.threads?.uploaded === true) return false;
-    
+
     // Allow text-only posts (no video file check needed)
     if (video.type === 'text') return true;
-    
+
     // For video posts, ensure file exists
     if (!video.file_path || !fs.existsSync(video.file_path)) return false;
-    
+
     return true;
   });
 }

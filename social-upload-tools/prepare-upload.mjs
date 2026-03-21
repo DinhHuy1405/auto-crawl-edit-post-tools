@@ -53,6 +53,8 @@ function prepareUploadDatabase() {
             const safeTitle = render.title.substring(0, 100); // 100 chars max title
             const uniqueId = `vid_${Date.now()}_${Math.floor(Math.random()*1000)}`;
             
+            const now = new Date();
+            const uploadDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
             uploadDb.push({
                 "id": uniqueId,
                 "type": "video",
@@ -61,7 +63,9 @@ function prepareUploadDatabase() {
                 "description": `${safeTitle} #tintuc #thethao #giaitri #news #xuhuong2026 #capnhat #thoisu`,
                 "file_path": render.outputPath,
                 "status": "ready",
-                "created_at": new Date().toISOString(),
+                "upload_date": uploadDate,
+                "created_at": now.toISOString(),
+                "skip": false,
                 "facebook": { "uploaded": false },
                 "tiktok": { "uploaded": false },
                 "threads": { "uploaded": false },

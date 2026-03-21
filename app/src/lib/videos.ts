@@ -20,7 +20,9 @@ export interface UploadVideo {
   description: string
   file_path: string
   status: string
+  upload_date?: string
   created_at: string
+  skip?: boolean
   facebook: { uploaded: boolean; uploaded_at?: string | null; reel_id?: string; error?: string; output?: string }
   tiktok: { uploaded: boolean; uploaded_at?: string | null; error?: string }
   threads: { uploaded: boolean; uploaded_at?: string | null; error?: string }
