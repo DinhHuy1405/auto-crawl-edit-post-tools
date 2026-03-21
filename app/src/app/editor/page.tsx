@@ -11,6 +11,7 @@ import {
   AlignLeft, ChevronLeft, ChevronRight as ChevronRightIcon,
   Clapperboard, Wand2, SkipForward, Hash, X, Lock, Unlock,
   Settings2, Download, Undo2, Redo2, GripVertical,
+  Cloud, Timer, Search, Crop, Ratio,
 } from 'lucide-react'
 
 const REAL_W = 1440
@@ -142,8 +143,8 @@ function Canvas({ layout, onLayout, blurZones, onBlurZones, videoUrl, activeElem
     <div className="relative select-none flex-shrink-0 overflow-hidden shadow-2xl"
       style={{width:CW,height:CH,background:'#1a1a2e',borderRadius:4}}
       onClick={()=>setActiveElement(null)}>
-      {/* Subtle grid */}
-      <div className="absolute inset-0 pointer-events-none" style={{opacity:0.03,backgroundImage:'linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px)',backgroundSize:`${CW/9}px ${CH/16}px`}}/>
+      {/* Subtle dot grid */}
+      <div className="absolute inset-0 pointer-events-none" style={{backgroundImage:'radial-gradient(circle,rgba(255,255,255,0.12) 1px,transparent 1px)',backgroundSize:`${Math.max(8,CW/18)}px ${Math.max(8,CW/18)}px`,opacity:0.6}}/>
       {/* Rule of thirds */}
       {[1/3,2/3].map(r=><div key={`h${r}`} className="absolute left-0 right-0 pointer-events-none" style={{top:`${r*100}%`,height:1,background:'rgba(255,255,255,0.04)'}}/>)}
       {[1/3,2/3].map(r=><div key={`v${r}`} className="absolute top-0 bottom-0 pointer-events-none" style={{left:`${r*100}%`,width:1,background:'rgba(255,255,255,0.04)'}}/>)}
@@ -389,7 +390,6 @@ function Timeline({ sourceMode, onSourceModeChange, layout, onLayout, totalDurat
   }
 
   // ── overlay / title clip ──────────────────────────────────────────────────
-  // Title overlay: startPct=0, duration=titleDuration
   const titleStartPct = 0
   const titleWidthPct = clampPct(secToPct(layout.titleDuration))
 
@@ -400,29 +400,52 @@ function Timeline({ sourceMode, onSourceModeChange, layout, onLayout, totalDurat
     setPlayheadPct(clampPct(pct))
   }
 
+  // Track heights per spec
   const TRACKS = [
-    { id:'overlays', label:'OVERLAYS', height:26, rowBg:'#fafafa' },
-    { id:'video1',   label:'VIDEO 1',  height:32, rowBg:'#f0f7ff' },
-    { id:'audio1',   label:'AUDIO 1',  height:22, rowBg:'#fdfaff' },
-    { id:'voice',    label:'VOICEOVER',height:22, rowBg:'#fff5fa' },
+    { id:'overlays', label:'OVERLAYS', height:28, rowBg:'#fafafa', borderColor:'#6366f1' },
+    { id:'video1',   label:'VIDEO 1',  height:36, rowBg:'#f0f7ff', borderColor:'#2563eb' },
+    { id:'audio1',   label:'AUDIO 1',  height:24, rowBg:'#fdfaff', borderColor:'#7c3aed' },
+    { id:'voice',    label:'VOICEOVER',height:24, rowBg:'#fff5fa', borderColor:'#db2777' },
   ]
   const ticks = Array.from({length:13},(_,i)=>({ label:formatTime(totalDuration*i/12), pct:i/12*100 }))
+  // Timecode from playhead
+  const playheadSec = Math.round((playheadPct/100)*totalDuration)
+  const tcH = String(Math.floor(playheadSec/3600)).padStart(2,'0')
+  const tcM = String(Math.floor((playheadSec%3600)/60)).padStart(2,'0')
+  const tcS = String(playheadSec%60).padStart(2,'0')
+  const timecodeFull = `${tcH}:${tcM}:${tcS}:00`
 
   return (
     <div className="flex flex-col" style={{background:'#f8fafc',borderTop:'1px solid #e2e8f0'}}>
       {/* Header */}
-      <div className="flex items-center gap-3 px-3 h-8 border-b border-slate-200 shrink-0" style={{background:'#f1f5f9'}}>
+      <div className="flex items-center gap-2 px-3 h-8 border-b border-slate-200 shrink-0" style={{background:'#f1f5f9'}}>
         <div className="flex items-center gap-1.5">
           <Scissors className="w-3.5 h-3.5 text-slate-400"/>
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Timeline</span>
           <span className="text-[10px] text-violet-500 font-medium ml-1 capitalize">· {mode.replace(/_/g,' ')}</span>
         </div>
         {rendering && <div className="flex items-center gap-1.5 ml-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"/><span className="text-[10px] text-green-600 font-medium">Rendering...</span></div>}
+
+        {/* Cut/Split/Delete tool buttons (visual only) */}
+        <div className="flex items-center gap-0.5 ml-1 px-1.5 py-0.5 rounded bg-slate-200/60 border border-slate-200">
+          <button className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="Cut"><Scissors className="w-3 h-3"/></button>
+          <div className="w-px h-3 bg-slate-300 mx-0.5"/>
+          <button className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="Split"><AlignLeft className="w-3 h-3"/></button>
+          <button className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Delete"><Trash2 className="w-3 h-3"/></button>
+        </div>
+
         <div className="flex-1"/>
+
+        {/* Timecode display on right */}
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 border border-slate-700">
+          <Timer className="w-2.5 h-2.5 text-slate-400"/>
+          <span className="text-[10px] font-mono font-bold text-green-400 tracking-widest">{timecodeFull}</span>
+        </div>
+
         {/* Timeline zoom */}
         <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-200/60">
           <button onClick={()=>setTlZoom(z=>Math.max(0.5,+(z-0.25).toFixed(2)))} className="text-slate-500 hover:text-slate-800"><ZoomOut className="w-3.5 h-3.5"/></button>
-          <div className="relative w-20 h-1.5 bg-slate-300 rounded-full cursor-pointer" onClick={e=>{const r=e.currentTarget.getBoundingClientRect();setTlZoom(+(0.5+(e.clientX-r.left)/r.width*4).toFixed(2))}}>
+          <div className="relative w-16 h-1.5 bg-slate-300 rounded-full cursor-pointer" onClick={e=>{const r=e.currentTarget.getBoundingClientRect();setTlZoom(+(0.5+(e.clientX-r.left)/r.width*4).toFixed(2))}}>
             <div className="absolute left-0 top-0 h-full bg-blue-500 rounded-full" style={{width:`${((tlZoom-0.5)/4)*100}%`}}/>
           </div>
           <button onClick={()=>setTlZoom(z=>Math.min(4.5,+(z+0.25).toFixed(2)))} className="text-slate-500 hover:text-slate-800"><ZoomIn className="w-3.5 h-3.5"/></button>
@@ -441,13 +464,15 @@ function Timeline({ sourceMode, onSourceModeChange, layout, onLayout, totalDurat
           ))}
         </div>
       ) : (
-        <div className="flex overflow-x-auto" style={{minHeight:116}}>
-          {/* Track labels */}
-          <div className="shrink-0 flex flex-col border-r border-slate-200 z-10" style={{width:90,background:'#f1f5f9',position:'sticky',left:0}}>
+        <div className="flex overflow-x-auto" style={{minHeight:120}}>
+          {/* Track labels — 96px wide with colored left border */}
+          <div className="shrink-0 flex flex-col border-r border-slate-200 z-10" style={{width:96,background:'#f1f5f9',position:'sticky',left:0}}>
             <div className="border-b border-slate-200" style={{height:20}}/>
             {TRACKS.map(t=>(
-              <div key={t.id} className="flex items-center px-2 gap-1.5 border-b border-slate-100" style={{height:t.height,background:'#f1f5f9'}}>
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide leading-none">{t.label}</span>
+              <div key={t.id} className="flex items-center px-2 gap-1.5 border-b border-slate-100 relative overflow-hidden" style={{height:t.height,background:'#f1f5f9'}}>
+                {/* Colored left border */}
+                <div className="absolute left-0 top-0 bottom-0 w-0.5" style={{background:t.borderColor}}/>
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide leading-none pl-2">{t.label}</span>
               </div>
             ))}
           </div>
@@ -581,7 +606,7 @@ function formatTime(sec: number) {
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
 }
 
-// ─── NumField (light mode) ────────────────────────────────────────────────────
+// ─── NumField ────────────────────────────────────────────────────────────────
 function NumField({ label, value, onChange, min=0, max, step=1, unit='px', hint }:{
   label:string; value:number; onChange:(v:number)=>void
   min?:number; max?:number; step?:number; unit?:string; hint?:string
@@ -600,20 +625,29 @@ function NumField({ label, value, onChange, min=0, max, step=1, unit='px', hint 
   )
 }
 
-// ─── VolumeBar (like master mixer fader) ─────────────────────────────────────
-function VolumeBar({ label, value, onChange, color }:{
-  label:string; value:number; onChange:(v:number)=>void; color:string
+// ─── VolumeBar (master mixer fader with gradient) ─────────────────────────────
+function VolumeBar({ label, value, onChange, gradientFrom, gradientTo }:{
+  label:string; value:number; onChange:(v:number)=>void; gradientFrom:string; gradientTo:string
 }) {
   const pct = Math.min((value/2)*100,100)
+  const dbLabel = value === 0 ? '-∞' : value < 0.5 ? '-6' : value < 1.5 ? '0' : '+6'
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <div className="relative w-8 h-24 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-        <div className="absolute bottom-0 left-0 right-0 rounded-full transition-all" style={{height:`${pct}%`,background:color}}/>
-        <input type="range" min={0} max={2} step={0.05} value={value} onChange={e=>onChange(+e.target.value)}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" style={{writingMode:'vertical-lr',direction:'rtl',transform:'rotate(180deg)'}}/>
+    <div className="flex flex-col items-center gap-1">
+      {/* dB labels on side */}
+      <div className="flex items-start gap-1.5">
+        <div className="flex flex-col justify-between h-24 text-right" style={{paddingBottom:2}}>
+          {['+6','0','-6','-∞'].map(l=>(
+            <span key={l} className="text-[7px] font-mono text-slate-400 leading-none">{l}</span>
+          ))}
+        </div>
+        <div className="relative w-7 h-24 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
+          <div className="absolute bottom-0 left-0 right-0 rounded-full transition-all" style={{height:`${pct}%`,background:`linear-gradient(to top,${gradientFrom},${gradientTo})`}}/>
+          <input type="range" min={0} max={2} step={0.05} value={value} onChange={e=>onChange(+e.target.value)}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" style={{writingMode:'vertical-lr',direction:'rtl',transform:'rotate(180deg)'}}/>
+        </div>
       </div>
-      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wide text-center leading-tight">{label}</span>
-      <span className="text-[10px] font-mono font-bold text-slate-700">{(value*100).toFixed(0)}%</span>
+      <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wide text-center leading-tight">{label}</span>
+      <span className="text-[9px] font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{(value*100).toFixed(0)}%</span>
     </div>
   )
 }
@@ -754,11 +788,11 @@ function PresetCard({ preset, isActive, onApply, onDuplicate, onDelete, onRename
 
 // ─── Layers Panel ────────────────────────────────────────────────────────────
 const LAYER_DEFS = [
-  {k:'title'        as const, label:'Title: OVERLAY', tag:'TXT',  tagBg:'#6366f1', tagText:'#fff', color:'#818cf8'},
-  {k:'logo'         as const, label:'Overlay Logo',   tag:'LOGO', tagBg:'#10b981', tagText:'#fff', color:'#34d399'},
-  {k:'blurZones'    as const, label:'Blur Zone',      tag:'BLUR', tagBg:'#f59e0b', tagText:'#fff', color:'#fbbf24'},
-  {k:'templateVideo'as const, label:'Template Video', tag:'VID',  tagBg:'#3b82f6', tagText:'#fff', color:'#60a5fa'},
-  {k:'mainVideo'    as const, label:'Main Clip',      tag:'VID',  tagBg:'#2563eb', tagText:'#fff', color:'#3b82f6'},
+  {k:'title'        as const, label:'Title: OVERLAY', tag:'TXT',  tagBg:'#6366f1', tagText:'#fff', color:'#818cf8', rowColor:'#6366f1'},
+  {k:'logo'         as const, label:'Overlay Logo',   tag:'LOGO', tagBg:'#10b981', tagText:'#fff', color:'#34d399', rowColor:'#10b981'},
+  {k:'blurZones'    as const, label:'Blur Zone',      tag:'BLUR', tagBg:'#f59e0b', tagText:'#fff', color:'#fbbf24', rowColor:'#f59e0b'},
+  {k:'templateVideo'as const, label:'Template Video', tag:'VID',  tagBg:'#3b82f6', tagText:'#fff', color:'#60a5fa', rowColor:'#3b82f6'},
+  {k:'mainVideo'    as const, label:'Main Clip',      tag:'VID',  tagBg:'#2563eb', tagText:'#fff', color:'#3b82f6', rowColor:'#2563eb'},
 ]
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -767,6 +801,7 @@ export default function EditorPage() {
   const [audio,setAudio]=useState<AudioConfig>({mainVideo:0,backgroundMusic:1.45,voiceNarration:1.75})
   const [blurZones,setBlurZones]=useState<BlurZone[]>([{id:'tl',label:'Top-Left',x:0,y:-30,w:210,h:210,sigma:30},{id:'tr',label:'Top-Right',x:1130,y:-30,w:350,h:180,sigma:30},{id:'bt',label:'Bottom-Ctr',x:420,y:-200,w:600,h:80,sigma:30}])
   const [layers,setLayers]=useState<LayersVis>({mainVideo:true,templateVideo:true,blurZones:true,title:true,logo:true})
+  const [lockedLayers,setLockedLayers]=useState<Set<keyof LayersVis>>(new Set())
   const [sourceMode,setSourceMode]=useState<SourceModeConfig>(DEFAULT_SOURCE_MODE)
   const [videos,setVideos]=useState<VideoItem[]>([])
   const [selectedVideo,setSelectedVideo]=useState<VideoItem|null>(null)
@@ -782,6 +817,7 @@ export default function EditorPage() {
   const [zoom,setZoom]=useState(1.0)
   const [userPresets,setUserPresets]=useState<Preset[]>([])
   const [activePresetId,setActivePresetId]=useState<string>('standard')
+  const [mediaSearch,setMediaSearch]=useState('')
 
   useEffect(()=>{
     fetch('/api/config').then(r=>r.json()).then((c:Record<string,unknown>)=>{
@@ -795,6 +831,7 @@ export default function EditorPage() {
 
   const onLayout=useCallback((l:Partial<Layout>)=>setLayout(prev=>({...prev,...l})),[])
   const toggleLayer=(k:keyof LayersVis)=>setLayers(prev=>({...prev,[k]:!prev[k]}))
+  const toggleLock=(k:keyof LayersVis)=>setLockedLayers(prev=>{const n=new Set(prev);n.has(k)?n.delete(k):n.add(k);return n})
   const tplRH=layout.templateH===-1?Math.round(layout.templateW*(9/16)):layout.templateH
 
   const addBlurZone=()=>setBlurZones(z=>[...z,{id:`z${Date.now()}`,label:`Zone ${z.length+1}`,x:200,y:50,w:200,h:100,sigma:30}])
@@ -844,60 +881,111 @@ export default function EditorPage() {
 
   const activeSection=activeElement==='logo'?'logo':activeElement==='template'?'template':activeElement==='title'?'title':activeElement?.startsWith('blur-')?'blur':null
 
+  // Active element inspector info
+  const inspectorLabel = activeElement
+    ? activeElement.startsWith('blur-') ? `Blur: ${activeElement.slice(5)}` : activeElement.charAt(0).toUpperCase()+activeElement.slice(1)
+    : null
+  const inspectorX = activeElement==='logo'?layout.logoX:activeElement==='template'?layout.templateX:activeElement==='title'?layout.titleX:null
+  const inspectorY = activeElement==='logo'?layout.logoY:activeElement==='template'?layout.templateY:activeElement==='title'?layout.titleY:null
+
   // Left tool items
   const LEFT_TOOLS = [
-    {id:'media'  as const, icon:Film,    label:'Media'},
+    {id:'media'  as const, icon:Film,        label:'Media'},
     {id:'source' as const, icon:Clapperboard, label:'Source'},
-    {id:'audio'  as const, icon:Music,   label:'Audio'},
-    {id:'text'   as const, icon:Type,    label:'Text'},
-    {id:'effects'as const, icon:Wand2,   label:'Effects'},
+    {id:'audio'  as const, icon:Music,       label:'Audio'},
+    {id:'text'   as const, icon:Type,        label:'Text'},
+    {id:'effects'as const, icon:Wand2,       label:'FX'},
   ]
+
+  // Timecode for top bar (mock from zoom as stand-in for playTime)
+  const playTimeSec = 160
+  const tcTopH = String(Math.floor(playTimeSec/3600)).padStart(2,'0')
+  const tcTopM = String(Math.floor((playTimeSec%3600)/60)).padStart(2,'0')
+  const tcTopS = String(playTimeSec%60).padStart(2,'0')
+  const topTimecode = `${tcTopH}:${tcTopM}:${tcTopS}:00`
+
+  const filteredVideos = videos.filter(v=>v.title.toLowerCase().includes(mediaSearch.toLowerCase()))
 
   return (
     <div className="flex flex-col overflow-hidden" style={{height:'calc(100vh - 64px)',background:'#f1f5f9'}}>
 
-      {/* ── TOP BAR ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-4 h-12 shrink-0 border-b border-slate-200 bg-white shadow-sm">
-        {/* Left: undo/redo */}
-        <div className="flex items-center gap-0.5">
-          <button className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"><Undo2 className="w-4 h-4"/></button>
-          <button className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"><Redo2 className="w-4 h-4"/></button>
+      {/* ── TOP MENU BAR (h-9, dark navy) ─────────────────────────────────────── */}
+      <div className="flex items-center shrink-0 px-0 h-9 border-b border-slate-800" style={{background:'#0f172a'}}>
+        {/* Left: App logo pill + menu items */}
+        <div className="flex items-center gap-0 pl-2 pr-3 border-r border-slate-700/60 h-full">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-600/20 border border-blue-500/30 mr-2">
+            <Film className="w-3 h-3 text-blue-400"/>
+            <span className="text-[10px] font-black text-blue-300 tracking-wider uppercase">AutoEdit</span>
+          </div>
+          {['File','Edit','Sequence','View'].map(item=>(
+            <button key={item} className="px-2.5 py-1 text-[11px] text-slate-400 hover:text-slate-100 hover:bg-slate-700/60 rounded transition-colors font-medium">
+              {item}
+            </button>
+          ))}
         </div>
 
-        <div className="w-px h-5 bg-slate-200"/>
-
-        {/* Zoom */}
-        <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200">
-          <button onClick={()=>setZoom(z=>Math.max(0.4,z-0.15))} className="text-slate-400 hover:text-slate-700"><ZoomOut className="w-3.5 h-3.5"/></button>
-          <span className="text-xs font-mono font-bold text-slate-600 w-10 text-center">Fit {Math.round(zoom*54)}%</span>
-          <button onClick={()=>setZoom(z=>Math.min(2.5,z+0.15))} className="text-slate-400 hover:text-slate-700"><ZoomIn className="w-3.5 h-3.5"/></button>
-          <button onClick={()=>setZoom(1.0)} className="text-slate-300 hover:text-slate-500 ml-0.5"><RotateCcw className="w-3 h-3"/></button>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center gap-2">
-          {/* Active element */}
-          {activeElement && (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 border border-blue-200">
-              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"/>
-              <span className="text-xs font-semibold text-blue-600 capitalize">{activeElement.replace('blur-','Blur: ')} selected</span>
-            </div>
-          )}
-          {/* Source mode badge */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 border border-violet-200">
-            <Wand2 className="w-3 h-3 text-violet-500"/>
-            <span className="text-xs font-semibold text-violet-600 capitalize">{sourceMode.mode.replace(/_/g,' ')}</span>
+        {/* Center: Timecode display */}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-slate-800/80 border border-slate-700/60">
+            <Timer className="w-3 h-3 text-slate-500"/>
+            <span className="text-[13px] font-mono font-bold tracking-[0.15em] text-green-400 tabular-nums">{topTimecode}</span>
           </div>
         </div>
 
-        {/* Right: actions */}
-        <button onClick={saveLayout} disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-40 shadow-sm">
-          {saving?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<Save className="w-3.5 h-3.5"/>} Save
-        </button>
-        <button onClick={runRender} disabled={rendering}
-          className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm">
-          {rendering?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<Download className="w-3.5 h-3.5"/>} Export
-        </button>
+        {/* Right: icons + actions */}
+        <div className="flex items-center gap-1 pr-2 pl-3 border-l border-slate-700/60 h-full">
+          <button className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-700/60 transition-colors" title="Cloud Save">
+            <Cloud className="w-3.5 h-3.5"/>
+          </button>
+          <button className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-700/60 transition-colors" title="Settings">
+            <Settings2 className="w-3.5 h-3.5"/>
+          </button>
+          <div className="w-px h-4 bg-slate-700 mx-1"/>
+          <button onClick={saveLayout} disabled={saving}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-slate-300 rounded border border-slate-600 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 h-6">
+            {saving?<Loader2 className="w-3 h-3 animate-spin"/>:<Save className="w-3 h-3"/>} Save
+          </button>
+          <button onClick={runRender} disabled={rendering}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-white rounded transition-colors disabled:opacity-50 h-6"
+            style={{background:'linear-gradient(135deg,#2563eb,#4f46e5)'}}>
+            {rendering?<Loader2 className="w-3 h-3 animate-spin"/>:<Download className="w-3 h-3"/>} Export
+          </button>
+        </div>
+      </div>
+
+      {/* ── SECONDARY TOOLBAR (undo/redo/zoom) ───────────────────────────────── */}
+      <div className="flex items-center gap-2 px-3 h-8 shrink-0 border-b border-slate-200 bg-white">
+        {/* Undo/redo */}
+        <div className="flex items-center gap-0.5">
+          <button className="p-1.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"><Undo2 className="w-3.5 h-3.5"/></button>
+          <button className="p-1.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"><Redo2 className="w-3.5 h-3.5"/></button>
+        </div>
+        <div className="w-px h-4 bg-slate-200"/>
+
+        {/* Floating toolbar pill for canvas controls */}
+        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-slate-100 border border-slate-200 shadow-sm text-[10px]">
+          <button onClick={()=>setZoom(z=>Math.max(0.4,z-0.15))} className="text-slate-400 hover:text-slate-700 p-0.5"><ZoomOut className="w-3 h-3"/></button>
+          <span className="font-mono font-bold text-slate-600 w-8 text-center">{Math.round(zoom*54)}%</span>
+          <button onClick={()=>setZoom(z=>Math.min(2.5,z+0.15))} className="text-slate-400 hover:text-slate-700 p-0.5"><ZoomIn className="w-3 h-3"/></button>
+          <div className="w-px h-3 bg-slate-300 mx-0.5"/>
+          <button onClick={()=>setZoom(1.0)} className="text-slate-400 hover:text-slate-600 p-0.5" title="Reset zoom"><RotateCcw className="w-3 h-3"/></button>
+          <div className="w-px h-3 bg-slate-300 mx-0.5"/>
+          <button className="text-slate-400 hover:text-slate-700 p-0.5" title="Crop"><Crop className="w-3 h-3"/></button>
+          <span className="text-[9px] font-bold text-slate-500 px-1 py-0.5 rounded bg-slate-200 font-mono">9:16</span>
+        </div>
+
+        <div className="flex-1 flex items-center justify-center gap-2">
+          {activeElement && (
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"/>
+              <span className="text-[10px] font-semibold text-blue-600 capitalize">{activeElement.replace('blur-','Blur: ')} selected</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200">
+            <Wand2 className="w-3 h-3 text-violet-500"/>
+            <span className="text-[10px] font-semibold text-violet-600 capitalize">{sourceMode.mode.replace(/_/g,' ')}</span>
+          </div>
+        </div>
       </div>
 
       {/* ── MAIN 3-PANEL LAYOUT ──────────────────────────────────────────────── */}
@@ -905,35 +993,50 @@ export default function EditorPage() {
 
         {/* ── LEFT: Icon toolbar + panel ───────────────────────────────────── */}
         <div className="flex shrink-0" style={{background:'#fff',borderRight:'1px solid #e2e8f0'}}>
-          {/* Icon column */}
-          <div className="flex flex-col items-center pt-2 pb-2 gap-1 w-14 border-r border-slate-100">
+          {/* Icon column — 60px */}
+          <div className="flex flex-col items-center pt-2 pb-2 gap-0.5 border-r border-slate-100" style={{width:60}}>
             {LEFT_TOOLS.map(t=>(
               <button key={t.id} onClick={()=>setLeftTab(t.id)}
-                className={cn('flex flex-col items-center gap-0.5 w-11 py-2 rounded-xl transition-all',leftTab===t.id?'bg-blue-50 text-blue-600':'text-slate-400 hover:text-slate-600 hover:bg-slate-50')}>
-                <t.icon className="w-4.5 h-4.5"/>
-                <span className="text-[8px] font-bold uppercase tracking-wide">{t.label}</span>
+                className={cn('flex flex-col items-center gap-1 w-12 py-2.5 rounded-xl transition-all',leftTab===t.id?'bg-blue-50 text-blue-600':'text-slate-400 hover:text-slate-600 hover:bg-slate-50')}>
+                <t.icon className="w-5 h-5"/>
+                <span className="text-[8px] font-bold uppercase tracking-wide leading-none">{t.label}</span>
               </button>
             ))}
             <div className="flex-1"/>
-            <button className="flex flex-col items-center gap-0.5 w-11 py-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all">
-              <Settings2 className="w-4 h-4"/>
-              <span className="text-[8px] font-bold uppercase tracking-wide">Config</span>
+            <button className="flex flex-col items-center gap-1 w-12 py-2.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all">
+              <Settings2 className="w-5 h-5"/>
+              <span className="text-[8px] font-bold uppercase tracking-wide leading-none">Setup</span>
             </button>
           </div>
 
-          {/* Panel content */}
-          <div className="w-48 flex flex-col overflow-hidden">
-            <div className="px-3 pt-3 pb-2 border-b border-slate-100">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{LEFT_TOOLS.find(t=>t.id===leftTab)?.label}</p>
+          {/* Panel content — w-52 */}
+          <div className="flex flex-col overflow-hidden" style={{width:208}}>
+            <div className="px-3 pt-2.5 pb-2 border-b border-slate-100 flex items-center gap-2">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex-1">{LEFT_TOOLS.find(t=>t.id===leftTab)?.label}</p>
             </div>
+
+            {/* Search bar for media tab */}
+            {leftTab==='media' && (
+              <div className="px-2 pt-2 pb-1">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400"/>
+                  <input
+                    value={mediaSearch} onChange={e=>setMediaSearch(e.target.value)}
+                    placeholder="Search media..."
+                    className="w-full h-7 pl-6 pr-2 text-[11px] bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 text-slate-700"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {leftTab==='media' && (<>
-                {videos.length===0 ? (
+                {filteredVideos.length===0 ? (
                   <div className="flex flex-col items-center justify-center h-24 text-center rounded-xl border-2 border-dashed border-slate-200 p-4">
                     <Film className="w-6 h-6 text-slate-300 mb-1.5"/>
-                    <p className="text-[10px] text-slate-400">No source videos</p>
+                    <p className="text-[10px] text-slate-400">{mediaSearch ? 'No results' : 'No source videos'}</p>
                   </div>
-                ) : videos.map(v=>(
+                ) : filteredVideos.map(v=>(
                   <button key={v.id} onClick={()=>setSelectedVideo(v)}
                     className={cn('w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-xl transition-all border',selectedVideo?.id===v.id?'border-blue-200 bg-blue-50 text-blue-700':'border-transparent hover:bg-slate-50 text-slate-600')}>
                     <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center shrink-0',selectedVideo?.id===v.id?'bg-blue-100':'bg-slate-100')}>
@@ -946,7 +1049,7 @@ export default function EditorPage() {
               {leftTab==='source' && <SourceModePanel config={sourceMode} onChange={setSourceMode}/>}
               {leftTab==='audio' && (
                 <div className="px-1 py-2 space-y-3">
-                  <p className="text-[9px] text-slate-400">3 luồng audio mix bằng FFmpeg amix.</p>
+                  <p className="text-[9px] text-slate-400">3 audio streams mixed via FFmpeg amix.</p>
                   {[{label:'Main',val:audio.mainVideo,key:'mainVideo' as const,color:'#3b82f6'},{label:'Music',val:audio.backgroundMusic,key:'backgroundMusic' as const,color:'#22c55e'},{label:'Voice',val:audio.voiceNarration,key:'voiceNarration' as const,color:'#a855f7'}].map(s=>(
                     <div key={s.key} className="space-y-1">
                       <div className="flex justify-between items-center">
@@ -968,15 +1071,32 @@ export default function EditorPage() {
         </div>
 
         {/* ── CENTER: Canvas ────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden" style={{background:'#e5e9f0'}}>
-          <div className="flex-1 overflow-auto flex items-start justify-center p-6">
-            <div className="flex flex-col items-center gap-3">
-              {/* Coords bar above canvas */}
-              <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-white/90 border border-slate-200 shadow-sm text-[10px] font-mono">
+        <div className="flex-1 flex flex-col overflow-hidden" style={{background:'#e2e8f0'}}>
+          <div className="flex-1 overflow-auto flex items-start justify-center p-5">
+            <div className="flex flex-col items-center gap-2">
+
+              {/* Floating toolbar pill above canvas */}
+              <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/95 border border-slate-200 shadow-md text-[10px] backdrop-blur-sm">
+                <select
+                  value={Math.round(zoom*54)}
+                  onChange={e=>setZoom(+e.target.value/54)}
+                  className="text-[10px] font-mono font-bold text-slate-700 bg-transparent border-none outline-none cursor-pointer pr-1">
+                  {[27,40,54,67,81,108].map(z=><option key={z} value={z}>{z}%</option>)}
+                </select>
+                <div className="w-px h-3 bg-slate-300"/>
+                <button onClick={()=>setZoom(z=>Math.max(0.4,+(z-0.15).toFixed(2)))} className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors"><Undo2 className="w-3 h-3"/></button>
+                <button onClick={()=>setZoom(z=>Math.min(2.5,+(z+0.15).toFixed(2)))} className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors"><Redo2 className="w-3 h-3"/></button>
+                <div className="w-px h-3 bg-slate-300"/>
+                <button className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors" title="Crop"><Crop className="w-3 h-3"/></button>
+                <span className="text-[9px] font-bold text-slate-500 px-1 py-0.5 rounded bg-slate-100 font-mono border border-slate-200">9:16</span>
+              </div>
+
+              {/* Coords bar */}
+              <div className="flex items-center gap-2.5 px-3 py-1 rounded-lg bg-white/90 border border-slate-200 shadow-sm text-[9px] font-mono">
                 <span className="text-blue-600">Tpl <strong>{layout.templateX},{layout.templateY}</strong> {layout.templateW}×{tplRH}</span>
-                <span className="text-slate-200">|</span>
+                <span className="text-slate-300">|</span>
                 <span className="text-sky-600">Logo <strong>{layout.logoX},{layout.logoY}</strong> {layout.logoW}×{layout.logoH}</span>
-                <span className="text-slate-200">|</span>
+                <span className="text-slate-300">|</span>
                 <span className="text-purple-600">Title <strong>{layout.titleX},{layout.titleY}</strong> {layout.titleDuration}s</span>
               </div>
 
@@ -1024,36 +1144,43 @@ export default function EditorPage() {
 
           {rightTab==='layers' ? (
             <div className="flex-1 overflow-y-auto">
-              {/* Layer rows */}
+              {/* Layer rows with colored left indicators */}
               <div className="p-2 space-y-1">
                 {LAYER_DEFS.map(l=>(
-                  <div key={l.k} className={cn('flex items-center gap-2 px-2 py-2 rounded-xl border cursor-pointer transition-all',
+                  <div key={l.k} className={cn('flex items-center gap-2 px-2 py-2 rounded-xl border cursor-pointer transition-all relative overflow-hidden',
                     activeElement===l.k||activeElement?.includes(l.k)?'border-blue-200 bg-blue-50':'border-transparent hover:border-slate-200 hover:bg-slate-50')}>
-                    <GripVertical className="w-3 h-3 text-slate-300 shrink-0"/>
+                    {/* Colored row indicator */}
+                    <div className="absolute left-0 top-0 bottom-0 w-0.5 rounded-l" style={{background:l.rowColor}}/>
+                    <GripVertical className="w-3 h-3 text-slate-300 shrink-0 ml-0.5"/>
                     <div className="shrink-0 w-8 h-5 rounded text-[8px] font-black flex items-center justify-center" style={{background:l.tagBg,color:l.tagText}}>{l.tag}</div>
                     <span className="flex-1 text-[11px] font-medium text-slate-600 truncate">{l.label}</span>
+                    {/* Eye toggle */}
                     <button onClick={()=>toggleLayer(l.k)} className="shrink-0 text-slate-300 hover:text-slate-600 transition-colors">
                       {layers[l.k] ? <Eye className="w-3.5 h-3.5"/> : <EyeOff className="w-3.5 h-3.5 text-slate-200"/>}
                     </button>
-                    <Lock className="w-3 h-3 text-slate-200 shrink-0"/>
+                    {/* Lock toggle (functional) */}
+                    <button onClick={()=>toggleLock(l.k)} className={cn('shrink-0 transition-colors',lockedLayers.has(l.k)?'text-amber-500 hover:text-amber-700':'text-slate-200 hover:text-slate-500')}>
+                      {lockedLayers.has(l.k) ? <Lock className="w-3 h-3"/> : <Unlock className="w-3 h-3"/>}
+                    </button>
                   </div>
                 ))}
               </div>
 
-              {/* Master Mixer */}
-              <div className="border-t border-slate-100 mt-2">
+              {/* Master Mixer with gradient faders */}
+              <div className="border-t border-slate-100 mt-1">
                 <div className="px-3 py-2 flex items-center gap-2">
                   <Volume2 className="w-3.5 h-3.5 text-slate-400"/>
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Master Mixer</span>
                 </div>
-                <div className="flex items-end justify-center gap-4 px-3 pb-4 pt-1">
-                  <VolumeBar label="Main" value={audio.mainVideo} onChange={v=>setAudio(p=>({...p,mainVideo:v}))} color="#818cf8"/>
-                  <VolumeBar label="Music" value={audio.backgroundMusic} onChange={v=>setAudio(p=>({...p,backgroundMusic:v}))} color="#c084fc"/>
-                  <VolumeBar label="Voice" value={audio.voiceNarration} onChange={v=>setAudio(p=>({...p,voiceNarration:v}))} color="#f472b6"/>
+                <div className="flex items-end justify-center gap-5 px-3 pb-4 pt-1">
+                  <VolumeBar label="Main" value={audio.mainVideo} onChange={v=>setAudio(p=>({...p,mainVideo:v}))} gradientFrom="#6366f1" gradientTo="#8b5cf6"/>
+                  <VolumeBar label="Music" value={audio.backgroundMusic} onChange={v=>setAudio(p=>({...p,backgroundMusic:v}))} gradientFrom="#10b981" gradientTo="#14b8a6"/>
+                  <VolumeBar label="Voice" value={audio.voiceNarration} onChange={v=>setAudio(p=>({...p,voiceNarration:v}))} gradientFrom="#ec4899" gradientTo="#f43f5e"/>
                 </div>
                 <div className="px-3 pb-3">
                   <button onClick={runRender} disabled={rendering}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-md">
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50 shadow-md"
+                    style={{background:'linear-gradient(135deg,#2563eb,#4338ca)'}}>
                     {rendering?<Loader2 className="w-4 h-4 animate-spin"/>:<Download className="w-4 h-4"/>}
                     EXPORT PROJECT
                   </button>
@@ -1063,6 +1190,33 @@ export default function EditorPage() {
           ) : (
             /* Properties panel */
             <div className="flex flex-col overflow-hidden flex-1">
+              {/* Contextual inspector — shown when element is selected */}
+              {activeElement && inspectorLabel && (
+                <div className="shrink-0 px-3 py-2.5 border-b border-slate-100 bg-slate-50 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"/>
+                    <span className="text-[11px] font-bold text-slate-700">{inspectorLabel}</span>
+                  </div>
+                  {inspectorX !== null && inspectorY !== null && (
+                    <div className="flex items-center gap-2 text-[9px] font-mono text-slate-500">
+                      <span className="bg-slate-200 px-1.5 py-0.5 rounded">X <strong className="text-slate-700">{inspectorX}</strong></span>
+                      <span className="bg-slate-200 px-1.5 py-0.5 rounded">Y <strong className="text-slate-700">{inspectorY}</strong></span>
+                    </div>
+                  )}
+                  <div className="space-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Opacity</span>
+                      <span className="text-[9px] font-mono text-slate-700">100%</span>
+                    </div>
+                    <div className="relative h-1.5 bg-slate-200 rounded-full">
+                      <div className="absolute left-0 top-0 h-full bg-blue-500 rounded-full" style={{width:'100%'}}/>
+                      <input type="range" min={0} max={100} defaultValue={100} readOnly
+                        className="absolute inset-0 w-full opacity-0 cursor-default"/>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Properties sub-tabs */}
               <div className="flex border-b border-slate-100 shrink-0 overflow-x-auto">
                 {([{id:'source' as const,label:'Source'},{id:'presets' as const,label:'Presets'},{id:'layout' as const,label:'Layout'},{id:'blur' as const,label:'Blur'}]).map(t=>(
@@ -1102,7 +1256,7 @@ export default function EditorPage() {
                 {/* Presets */}
                 {propTab==='presets' && (<>
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold text-slate-500">Apply preset để load toàn bộ layout + audio.</p>
+                    <p className="text-[10px] font-semibold text-slate-500">Apply preset để load layout + audio.</p>
                     <button onClick={saveAsPreset} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"><Plus className="w-3 h-3"/>Save</button>
                   </div>
                   <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">Built-in</p>
@@ -1123,6 +1277,19 @@ export default function EditorPage() {
                       <NumField label="Width" value={layout.templateW} onChange={v=>onLayout({templateW:v})} min={80} max={REAL_W}/>
                       <NumField label="Height" value={layout.templateH} onChange={v=>onLayout({templateH:v})} min={-1} max={REAL_H} hint="-1=auto"/>
                     </div>
+                    {/* Scale slider */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Scale</span>
+                        <span className="text-[9px] font-mono text-slate-700">{Math.round((layout.templateW/REAL_W)*100)}%</span>
+                      </div>
+                      <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="absolute left-0 top-0 h-full bg-blue-400 rounded-full" style={{width:`${(layout.templateW/REAL_W)*100}%`}}/>
+                        <input type="range" min={80} max={REAL_W} step={10} value={layout.templateW}
+                          onChange={e=>onLayout({templateW:+e.target.value})}
+                          className="absolute inset-0 w-full opacity-0 cursor-pointer"/>
+                      </div>
+                    </div>
                     <div className="text-[9px] text-blue-600 bg-blue-50 rounded-lg px-2 py-1.5 border border-blue-100">
                       Rendered: {layout.templateW}×{tplRH}px
                     </div>
@@ -1134,6 +1301,19 @@ export default function EditorPage() {
                       <NumField label="Y" value={layout.logoY} onChange={v=>onLayout({logoY:v})} max={REAL_H}/>
                       <NumField label="W" value={layout.logoW} onChange={v=>onLayout({logoW:v})} min={10} max={REAL_W}/>
                       <NumField label="H" value={layout.logoH} onChange={v=>onLayout({logoH:v})} min={5} max={REAL_H}/>
+                    </div>
+                    {/* Scale slider */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Scale</span>
+                        <span className="text-[9px] font-mono text-slate-700">{Math.round((layout.logoW/REAL_W)*100)}%</span>
+                      </div>
+                      <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="absolute left-0 top-0 h-full bg-sky-400 rounded-full" style={{width:`${(layout.logoW/REAL_W)*100}%`}}/>
+                        <input type="range" min={10} max={600} step={5} value={layout.logoW}
+                          onChange={e=>onLayout({logoW:+e.target.value})}
+                          className="absolute inset-0 w-full opacity-0 cursor-pointer"/>
+                      </div>
                     </div>
                   </Section>
                   <Section label="Title Overlay" active={activeSection==='title'} color="#7c3aed" icon={Type}>
