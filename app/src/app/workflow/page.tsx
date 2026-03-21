@@ -318,33 +318,37 @@ export default function WorkflowPage() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col min-h-screen animate-fade-in">
+      {/* Top Header */}
+      <header className="flex items-center justify-between px-8 h-16 bg-white/80 backdrop-blur-md sticky top-0 z-40 border-b border-slate-100 shadow-sm shadow-slate-200/50">
         <div>
-          <h1 className="page-title"><GitBranch className="w-5 h-5 text-blue-500" />Workflow Runner</h1>
-          <p className="page-desc">Automated pipeline: Crawl → Edit → Upload</p>
+          <h2 className="text-lg font-bold text-slate-900">Workflow</h2>
+          <p className="text-xs text-slate-400">Automated pipeline: Crawl → Edit → Upload</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={reset} disabled={isRunning} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors">
+        <div className="flex items-center gap-3">
+          <button onClick={reset} disabled={isRunning}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-lg disabled:opacity-50 transition-colors">
             <RotateCcw className="w-3.5 h-3.5" />Reset
           </button>
           {isRunning ? (
-            <button onClick={stop} className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors">
+            <button onClick={stop}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors shadow-md shadow-red-200">
               <Square className="w-3.5 h-3.5 fill-white" />Stop
             </button>
           ) : (
-            <button onClick={runFull} className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+            <button onClick={runFull}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg hover:opacity-90 transition-all shadow-md shadow-blue-200 active:scale-95">
               <Play className="w-3.5 h-3.5 fill-white" />Run Full Workflow
             </button>
           )}
         </div>
-      </div>
+      </header>
+      <div className="flex-1 p-8 space-y-5">
 
       {/* Config row: Crawl Sources + Upload Platforms */}
       <div className="grid grid-cols-2 gap-4">
         {/* Crawl Sources */}
-        <div className="section-card overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
             <YouTubeIcon className="text-red-500" size={14} />
             <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Crawl Sources</p>
@@ -389,7 +393,7 @@ export default function WorkflowPage() {
         </div>
 
         {/* Upload Platforms */}
-        <div className="section-card overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
             <div className="flex items-center gap-1">
               <TikTokIcon size={13} className="text-slate-700" />
@@ -434,7 +438,7 @@ export default function WorkflowPage() {
 
       {/* Upload Video Queue */}
       {uploadQueue.length > 0 && (
-        <div className="section-card overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
             <Video className="w-4 h-4 text-slate-400" />
             <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Videos sẽ upload hôm nay</p>
@@ -476,7 +480,7 @@ export default function WorkflowPage() {
       )}
 
       {/* Progress bar */}
-      <div className="section-card p-4">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
         <div className="flex items-center justify-between mb-2.5">
           <span className="text-sm font-medium text-slate-700">Overall Progress</span>
           <span className="text-sm font-bold text-blue-600">{done}/{STEPS.length} steps · {pct}%</span>
@@ -561,17 +565,18 @@ export default function WorkflowPage() {
       </div>
 
       {/* Individual step runner */}
-      <div className="section-card p-4">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Run Individual Steps</p>
+      <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Run Individual Steps</p>
         <div className="flex flex-wrap gap-2">
           {STEPS.map(step => (
             <button key={step.id} disabled={isRunning} onClick={() => runSingle(step.id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 transition-colors">
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 transition-colors">
               {step.label}
             </button>
           ))}
         </div>
       </div>
+      </div>{/* end flex-1 p-8 */}
     </div>
   )
 }

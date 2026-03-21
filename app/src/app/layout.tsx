@@ -16,9 +16,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
-      <body className="bg-slate-50 text-slate-900" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <body className="bg-[#f1f7ff] text-slate-900" style={{ fontFamily: "'Inter', sans-serif" }}>
         <Sidebar />
-        <main className="ml-60 min-h-screen p-7">
+        <main className="ml-64 min-h-screen">
           {children}
         </main>
         <Toaster
