@@ -3,9 +3,8 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
-  Play, Square, Terminal, RotateCcw, GitBranch,
-  CheckCircle2, XCircle, Loader2, Clock, ChevronRight,
-  AlertCircle, Layers, Plus, Link as LinkIcon,
+  Play, Square, RotateCcw,
+  Loader2, Plus, Link as LinkIcon,
   Pencil, Trash2, Check, X, Video, EyeOff,
 } from 'lucide-react'
 import {
@@ -307,15 +306,7 @@ export default function WorkflowPage() {
 
   const reset = () => { setSteps(STEPS.map(s => ({ ...s, status: 'pending' }))); setLogs([]) }
   const done = steps.filter(s => s.status === 'done').length
-  const pct = Math.round((done / STEPS.length) * 100)
 
-  const stepIcon = (s: Step) => {
-    if (s.status === 'running') return <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-    if (s.status === 'done')    return <CheckCircle2 className="w-4 h-4 text-green-500" />
-    if (s.status === 'error')   return <XCircle className="w-4 h-4 text-red-500" />
-    if (s.status === 'skipped') return <AlertCircle className="w-4 h-4 text-amber-500" />
-    return <Clock className="w-4 h-4 text-slate-300" />
-  }
 
   return (
     <div className="flex flex-col min-h-screen animate-fade-in">
@@ -479,103 +470,127 @@ export default function WorkflowPage() {
         </div>
       )}
 
-      {/* Progress bar */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-        <div className="flex items-center justify-between mb-2.5">
-          <span className="text-sm font-medium text-slate-700">Overall Progress</span>
-          <span className="text-sm font-bold text-blue-600">{done}/{STEPS.length} steps · {pct}%</span>
+      {/* System Pipeline — horizontal */}
+      <div className="bg-white rounded-xl border border-slate-100 shadow-sm px-8 py-5">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-base font-bold text-slate-800">System Pipeline</h3>
+          <div className="flex items-center gap-4 text-xs text-slate-500">
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Active</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />Waiting</span>
+          </div>
         </div>
-        <div className="workflow-progress">
-          <div className="workflow-progress-fill" style={{ width: `${pct}%` }} />
+        <div className="relative">
+          {/* Background connecting line */}
+          <div className="absolute top-6 left-6 right-6 h-0.5 bg-slate-200 z-0" />
+          {/* Progress line */}
+          <div
+            className="absolute top-6 left-6 h-0.5 bg-blue-500 z-0 transition-all duration-700"
+            style={{ width: done > 0 ? `calc(${((done - 1) / (STEPS.length - 1)) * 100}% * ((100% - 3rem) / 100%))` : '0' }}
+          />
+          <div className="grid relative z-10" style={{ gridTemplateColumns: `repeat(${STEPS.length}, 1fr)` }}>
+            {steps.map((step) => {
+              const isDone    = step.status === 'done'
+              const isRun     = step.status === 'running'
+              const isError   = step.status === 'error'
+              const isSkipped = step.status === 'skipped'
+              return (
+                <div key={step.id} className="text-center group">
+                  <button
+                    onClick={() => step.status === 'pending' && !isRunning ? runSingle(step.id) : undefined}
+                    className={cn(
+                      'w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-3 border-2 bg-white transition-all',
+                      isDone    ? 'border-emerald-500 bg-emerald-50 text-emerald-600' :
+                      isRun     ? 'border-blue-500 bg-blue-50 text-blue-600 animate-pulse' :
+                      isError   ? 'border-red-400 bg-red-50 text-red-500' :
+                      isSkipped ? 'border-amber-400 bg-amber-50 text-amber-500' :
+                                  'border-slate-200 text-slate-400',
+                      step.status === 'pending' && !isRunning && 'hover:border-blue-300 hover:text-blue-500 cursor-pointer'
+                    )}>
+                    {isRun ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : isDone ? (
+                      <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    ) : isError ? (
+                      <span className="material-symbols-outlined text-xl">error</span>
+                    ) : isSkipped ? (
+                      <span className="material-symbols-outlined text-xl">warning</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-xl">{{
+                        crawl: 'travel_explore', news: 'auto_awesome', voice: 'mic',
+                        prepare: 'auto_fix_high', render: 'movie_edit',
+                        'prepare-upload': 'database', upload: 'upload_file',
+                      }[step.id] ?? 'circle'}</span>
+                    )}
+                  </button>
+                  <p className={cn(
+                    'text-[11px] font-bold uppercase tracking-tight',
+                    isRun ? 'text-blue-600' : isDone ? 'text-emerald-700' : isError ? 'text-red-500' : 'text-slate-400'
+                  )}>{step.label}</p>
+                  <p className={cn('text-[10px] mt-0.5',
+                    isRun ? 'text-blue-400' : isDone ? 'text-emerald-500' : 'text-slate-300'
+                  )}>
+                    {isRun ? 'Running...' : isDone ? `${step.duration ?? ''}s` : isError ? 'Error' : 'Pending'}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-4" style={{ height: 480 }}>
-        {/* Steps */}
-        <div className="col-span-2 section-card overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2 shrink-0">
-            <Layers className="w-4 h-4 text-slate-400" />
-            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Pipeline Steps</p>
-          </div>
-          <div className="p-2 space-y-0.5 overflow-y-auto flex-1">
-            {steps.map((step, i) => (
-              <div key={step.id} className={cn(
-                'flex items-center gap-3 p-3 rounded-lg transition-all',
-                step.status === 'running' ? 'step-active-pulse border border-blue-200' :
-                step.status === 'done'    ? 'bg-green-50/60' :
-                step.status === 'error'   ? 'bg-red-50/60' : ''
-              )}>
-                <span className="text-xs font-mono text-slate-300 w-4 shrink-0">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <p className={cn('text-sm font-medium', step.status === 'running' ? 'text-blue-700' : 'text-slate-800')}>{step.label}</p>
-                  <p className="text-xs text-slate-400 truncate">{step.description}</p>
-                  {step.id === 'upload' && platforms.length > 0 && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      {platforms.includes('tiktok')   && <TikTokIcon   size={10} className="text-slate-500" />}
-                      {platforms.includes('facebook') && <FacebookIcon size={10} className="text-blue-500" />}
-                      {platforms.includes('threads')  && <ThreadsIcon  size={10} className="text-slate-600" />}
-                    </div>
-                  )}
-                  {step.duration !== undefined && <p className="text-[10px] text-slate-400 mt-0.5">{step.duration}s</p>}
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {stepIcon(step)}
-                  {step.status === 'pending' && !isRunning && (
-                    <button onClick={() => runSingle(step.id)} className="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors">
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 gap-4" style={{ height: 420 }}>
         {/* Logs — fixed height, scrolls internally */}
-        <div className="col-span-3 section-card overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+        <div className="section-card overflow-hidden flex flex-col">
+          <div className="px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-slate-400" />
-              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Live Logs</p>
+              <span className="material-symbols-outlined text-sm text-slate-500">terminal</span>
+              <span className="text-sm font-semibold text-slate-700">Execution Logs</span>
+              {isRunning && <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin ml-1" />}
             </div>
-            <div className="flex items-center gap-2">
-              {isRunning && <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />}
-              <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', isRunning ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500')}>
-                {isRunning ? 'Running...' : 'Idle'}
-              </span>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  const text = logs.map(l => `[${l.ts}] ${l.level.toUpperCase()} ${l.message}`).join('\n')
+                  navigator.clipboard.writeText(text)
+                  toast.success('Logs copied!')
+                }}
+                className="text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors tracking-wider">
+                EXPORT
+              </button>
+              <button onClick={() => setLogs([])} className="text-[10px] font-bold text-slate-400 hover:text-red-500 transition-colors tracking-wider">
+                CLEAR
+              </button>
             </div>
           </div>
           <div
             ref={logScrollRef}
-            className="font-mono text-[11px] leading-5 bg-slate-950 text-slate-300 overflow-y-auto p-4 flex-1"
+            className="font-mono text-xs leading-6 bg-white text-slate-700 overflow-y-auto p-6 flex-1 space-y-1.5"
           >
             {logs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full">
-                <Terminal className="w-8 h-8 text-slate-700 opacity-20 mb-2" />
-                <span className="text-slate-600 text-xs">Logs will stream here when workflow runs...</span>
+                <span className="material-symbols-outlined text-slate-200 text-4xl mb-2">terminal</span>
+                <span className="text-slate-300 text-xs">Logs will stream here when workflow runs...</span>
               </div>
-            ) : logs.map((l, i) => (
-              <span key={i} className={cn('log-line', l.level)}>
-                {l.ts && <span className="text-slate-600 mr-2">[{l.ts}]</span>}
-                {l.message}
-              </span>
-            ))}
+            ) : logs.map((l, i) => {
+              const levelMap: Record<string, { text: string; cls: string }> = {
+                error:   { text: 'ERROR',   cls: 'text-red-500' },
+                warning: { text: 'WARN',    cls: 'text-amber-500' },
+                success: { text: 'SUCCESS', cls: 'text-emerald-600' },
+                info:    { text: 'INFO',    cls: 'text-blue-500' },
+              }
+              const lbl = levelMap[l.level] ?? { text: 'LOG', cls: 'text-slate-400' }
+              return (
+                <div key={i} className="flex gap-4">
+                  <span className="text-slate-400 w-20 shrink-0">[{l.ts}]</span>
+                  <span className={cn('font-bold w-14 shrink-0', lbl.cls)}>{lbl.text}</span>
+                  <span className="text-slate-700 opacity-80">{l.message}</span>
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
 
-      {/* Individual step runner */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Run Individual Steps</p>
-        <div className="flex flex-wrap gap-2">
-          {STEPS.map(step => (
-            <button key={step.id} disabled={isRunning} onClick={() => runSingle(step.id)}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 transition-colors">
-              {step.label}
-            </button>
-          ))}
-        </div>
-      </div>
       </div>{/* end flex-1 p-8 */}
     </div>
   )
