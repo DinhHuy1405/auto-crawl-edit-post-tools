@@ -1,10 +1,11 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { cn, truncate } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
   RefreshCw, CheckCircle2, XCircle, Clock, Loader2,
   Play, Film, ChevronDown, ChevronUp, AlertCircle, CloudUpload, Trash2,
+  Pause, Volume2, Upload, Mic, Calendar,
 } from 'lucide-react'
 import { TikTokIcon, FacebookIcon, ThreadsIcon } from '@/components/platform-icons'
 
@@ -17,9 +18,112 @@ interface UploadVideo {
 }
 interface Stats { total: number; ready: number; facebook_uploaded: number; tiktok_uploaded: number; threads_uploaded: number; facebook_pending: number; tiktok_pending: number; threads_pending: number }
 
+interface RenderedVideo {
+  id: string; title: string; filePath: string; voicePath: string | null
+  voiceDurationSec: number | null; sizeMb: number; date: string; folder: string
+  publicPath: string; voicePublicPath: string | null
+}
+
 const STATUS_LABEL = { completed: 'COMPLETED', failed: 'FAILED', queued: 'QUEUED', pending: 'PENDING' }
 
+function VideoPreviewCard({ video, onUpload, uploadingId }: {
+  video: RenderedVideo
+  onUpload: (videoId: string, platform: string) => void
+  uploadingId: string | null
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [playing, setPlaying] = useState(false)
+
+  const togglePlay = () => {
+    const v = videoRef.current
+    if (!v) return
+    if (playing) { v.pause(); setPlaying(false) }
+    else { v.play(); setPlaying(true) }
+  }
+
+  const formatDate = (d: string) => `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`
+  const formatDur = (s: number | null) => s == null ? '?' : `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+      {/* Video preview */}
+      <div className="relative aspect-[9/16] max-h-52 bg-slate-900 overflow-hidden">
+        <video
+          ref={videoRef}
+          src={video.publicPath}
+          className="w-full h-full object-contain"
+          loop
+          playsInline
+          onEnded={() => setPlaying(false)}
+        />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <button
+            onClick={togglePlay}
+            className="w-12 h-12 rounded-full bg-white/20 backdrop-blur hover:bg-white/30 flex items-center justify-center transition-colors border border-white/30"
+          >
+            {playing
+              ? <Pause className="w-5 h-5 text-white" />
+              : <Play className="w-5 h-5 text-white ml-0.5" />}
+          </button>
+        </div>
+        {/* Date badge */}
+        <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 bg-black/60 backdrop-blur rounded-full">
+          <Calendar className="w-2.5 h-2.5 text-slate-300" />
+          <span className="text-[9px] font-mono text-slate-300">{formatDate(video.date)}</span>
+        </div>
+        {/* Size badge */}
+        <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 backdrop-blur rounded-full">
+          <span className="text-[9px] font-mono text-slate-300">{video.sizeMb} MB</span>
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="p-3 space-y-2">
+        <div>
+          <p className="text-xs font-semibold text-slate-800 truncate">{video.title}</p>
+          {video.voiceDurationSec != null && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <Mic className="w-3 h-3 text-pink-400" />
+              <span className="text-[10px] text-slate-400">Voice: {formatDur(video.voiceDurationSec)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Upload buttons per platform */}
+        <div className="grid grid-cols-3 gap-1">
+          {[
+            { id: 'tiktok', label: 'TikTok', Icon: TikTokIcon },
+            { id: 'facebook', label: 'FB', Icon: FacebookIcon },
+            { id: 'threads', label: 'Threads', Icon: ThreadsIcon },
+          ].map(p => {
+            const isUploading = uploadingId === `${video.id}_${p.id}`
+            return (
+              <button
+                key={p.id}
+                onClick={() => onUpload(video.id, p.id)}
+                disabled={!!uploadingId}
+                className={cn(
+                  'flex flex-col items-center gap-1 py-1.5 rounded-lg border text-[9px] font-semibold transition-all',
+                  isUploading
+                    ? 'border-blue-200 bg-blue-50 text-blue-600'
+                    : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-500 hover:text-blue-600 disabled:opacity-40'
+                )}
+              >
+                {isUploading
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <p.Icon size={14} />}
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function UploadPage() {
+  const [activeTab, setActiveTab] = useState<'queue' | 'rendered'>('queue')
   const [videos, setVideos] = useState<UploadVideo[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -27,6 +131,9 @@ export default function UploadPage() {
   const [logs, setLogs] = useState<{ msg: string; level: string }[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [logOpen, setLogOpen] = useState(false)
+  const [renderedVideos, setRenderedVideos] = useState<RenderedVideo[]>([])
+  const [renderedLoading, setRenderedLoading] = useState(false)
+  const [uploadingRendered, setUploadingRendered] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -38,7 +145,18 @@ export default function UploadPage() {
     finally { setLoading(false) }
   }, [])
 
+  const loadRendered = useCallback(async () => {
+    setRenderedLoading(true)
+    try {
+      const res = await fetch('/api/videos?type=rendered')
+      const data = await res.json()
+      setRenderedVideos(Array.isArray(data) ? data : [])
+    } catch { toast.error('Failed to load rendered videos') }
+    finally { setRenderedLoading(false) }
+  }, [])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { if (activeTab === 'rendered') loadRendered() }, [activeTab, loadRendered])
 
   const doUpload = async (step: string, label: string) => {
     setUploading(label); setLogs([]); setLogOpen(true)
@@ -66,6 +184,36 @@ export default function UploadPage() {
       }
     } catch (e) { toast.error(String(e)) }
     finally { setUploading(null) }
+  }
+
+  const uploadRenderedVideo = async (videoId: string, platform: string) => {
+    const video = renderedVideos.find(v => v.id === videoId)
+    if (!video) return
+    const key = `${videoId}_${platform}`
+    setUploadingRendered(key)
+    try {
+      const res = await fetch('/api/workflow/run', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step: 'upload', runId: `rendered_${Date.now()}`, filePath: video.filePath, platform }),
+      })
+      if (!res.body) { toast.error('No response'); return }
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break
+        buf += dec.decode(value, { stream: true })
+        const parts = buf.split('\n\n'); buf = parts.pop() || ''
+        for (const part of parts) {
+          const line = part.replace(/^data: /, '').trim(); if (!line) continue
+          try {
+            const ev = JSON.parse(line)
+            if (ev.type === 'done') {
+              toast[ev.success ? 'success' : 'error'](ev.success ? `Uploaded to ${platform}!` : `Upload failed`)
+            }
+          } catch {}
+        }
+      }
+    } catch (e) { toast.error(String(e)) }
+    finally { setUploadingRendered(null) }
   }
 
   const toggle = (id: string) => {
@@ -102,31 +250,106 @@ export default function UploadPage() {
     <div className="flex flex-col min-h-screen">
       {/* Top Header */}
       <header className="flex items-center justify-between px-8 h-16 bg-white/80 backdrop-blur-md sticky top-0 z-40 border-b border-slate-100 shadow-sm shadow-slate-200/50">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">Upload Manager</h2>
-          <p className="text-xs text-slate-400">Monitor and manage your automated content distribution pipeline.</p>
+        <div className="flex items-center gap-6">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Upload Manager</h2>
+            <p className="text-xs text-slate-400">Monitor and manage your automated content distribution pipeline.</p>
+          </div>
+          {/* Tab switcher */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => setActiveTab('queue')}
+              className={cn('px-4 py-1.5 text-sm font-semibold rounded-lg transition-all',
+                activeTab === 'queue' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700')}
+            >
+              Upload Queue
+            </button>
+            <button
+              onClick={() => setActiveTab('rendered')}
+              className={cn('flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold rounded-lg transition-all',
+                activeTab === 'rendered' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700')}
+            >
+              <Film className="w-3.5 h-3.5" />
+              Rendered Videos
+              {renderedVideos.length > 0 && (
+                <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+                  {renderedVideos.length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3">
-          {uploading && (
+          {(uploading || uploadingRendered) && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-lg">
               <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
               <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Uploading...</span>
             </div>
           )}
-          <button onClick={load} disabled={loading}
+          <button onClick={activeTab === 'rendered' ? loadRendered : load} disabled={loading || renderedLoading}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            <RefreshCw className={cn('w-3.5 h-3.5', (loading || renderedLoading) && 'animate-spin')} />
             Refresh
           </button>
-          <button onClick={() => doUpload('upload', 'all')} disabled={!!uploading}
-            className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg shadow-md shadow-blue-200 hover:opacity-90 disabled:opacity-50 transition-all active:scale-95">
-            {uploading === 'all' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CloudUpload className="w-3.5 h-3.5" />}
-            Upload All
-          </button>
+          {activeTab === 'queue' && (
+            <button onClick={() => doUpload('upload', 'all')} disabled={!!uploading}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg shadow-md shadow-blue-200 hover:opacity-90 disabled:opacity-50 transition-all active:scale-95">
+              {uploading === 'all' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CloudUpload className="w-3.5 h-3.5" />}
+              Upload All
+            </button>
+          )}
         </div>
       </header>
 
       <div className="flex-1 p-8 space-y-6 animate-fade-in">
+        {/* ── Rendered Videos Tab ───────────────────────────────────────────── */}
+        {activeTab === 'rendered' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Rendered Videos</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Videos đã render xong — preview và upload trực tiếp lên từng platform</p>
+              </div>
+              <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
+                {renderedVideos.length} videos
+              </span>
+            </div>
+
+            {renderedLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-slate-100 overflow-hidden animate-pulse">
+                    <div className="aspect-[9/16] max-h-52 bg-slate-200" />
+                    <div className="p-3 space-y-2">
+                      <div className="h-3 bg-slate-200 rounded w-3/4" />
+                      <div className="h-8 bg-slate-100 rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : renderedVideos.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center">
+                <Film className="w-12 h-12 text-slate-200 mb-4" />
+                <p className="text-sm font-medium text-slate-400">No rendered videos found</p>
+                <p className="text-xs text-slate-300 mt-1">Run the render step in Workflow to generate videos</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {renderedVideos.map(v => (
+                  <VideoPreviewCard
+                    key={v.id}
+                    video={v}
+                    onUpload={uploadRenderedVideo}
+                    uploadingId={uploadingRendered}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Upload Queue Tab ─────────────────────────────────────────────── */}
+        {activeTab === 'queue' && <>
         {/* Stat Cards */}
         <div className="grid grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6">
@@ -322,6 +545,7 @@ export default function UploadPage() {
             )}
           </div>
         </div>
+        </>}
       </div>
     </div>
   )

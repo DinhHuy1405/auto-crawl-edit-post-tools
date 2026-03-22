@@ -330,11 +330,12 @@ function DraggableClip({
 }
 
 // ─── Timeline ─────────────────────────────────────────────────────────────────
-function Timeline({ sourceMode, onSourceModeChange, layout, onLayout, totalDuration=160, renderLogs, rendering, showLogs }:{
+function Timeline({ sourceMode, onSourceModeChange, layout, onLayout, totalDuration=160, onTotalDurationChange, renderLogs, rendering, showLogs, voiceDurationSec }:{
   sourceMode: SourceModeConfig; onSourceModeChange: (c: SourceModeConfig) => void
   layout: Layout; onLayout: (l: Partial<Layout>) => void
-  totalDuration?: number
+  totalDuration?: number; onTotalDurationChange?: (d: number) => void
   renderLogs:{msg:string;level:string}[]; rendering:boolean; showLogs:boolean
+  voiceDurationSec?: number | null
 }) {
   const logRef = useRef<HTMLDivElement>(null)
   const [tlZoom, setTlZoom] = useState(1)        // 1 = fit, >1 = zoom in
@@ -433,6 +434,32 @@ function Timeline({ sourceMode, onSourceModeChange, layout, onLayout, totalDurat
           <button className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="Split"><AlignLeft className="w-3 h-3"/></button>
           <button className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Delete"><Trash2 className="w-3 h-3"/></button>
         </div>
+
+        {/* Total duration control */}
+        {onTotalDurationChange && (
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-200/60 border border-slate-200">
+            <Timer className="w-3 h-3 text-slate-400"/>
+            <span className="text-[9px] text-slate-400 font-mono">Duration:</span>
+            <input
+              type="number" min={10} max={7200} value={totalDuration}
+              onChange={e => onTotalDurationChange(Math.max(10, +e.target.value))}
+              className="w-12 h-4 px-1 text-[10px] font-mono font-bold text-slate-700 bg-white border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+            <span className="text-[9px] text-slate-400">s</span>
+          </div>
+        )}
+
+        {/* Fit to Voice button */}
+        {voiceDurationSec != null && onTotalDurationChange && (
+          <button
+            onClick={() => onTotalDurationChange(Math.ceil(voiceDurationSec!))}
+            className="flex items-center gap-1 px-2 py-0.5 rounded bg-pink-50 border border-pink-200 hover:bg-pink-100 transition-colors"
+            title={`Set duration to voice length (${voiceDurationSec}s)`}
+          >
+            <Mic className="w-3 h-3 text-pink-500"/>
+            <span className="text-[9px] font-bold text-pink-600">Fit to Voice ({Math.ceil(voiceDurationSec)}s)</span>
+          </button>
+        )}
 
         <div className="flex-1"/>
 
@@ -583,18 +610,82 @@ function Timeline({ sourceMode, onSourceModeChange, layout, onLayout, totalDurat
         </div>
       )}
 
-      {/* Tooltip: show selected clip info */}
+      {/* Trim controls for selected clip */}
       {activeClip && !showLogs && (
-        <div className="flex items-center gap-3 px-3 py-1 border-t border-slate-100 bg-white text-[9px] text-slate-500 font-mono">
-          <span className="font-bold text-blue-600">{activeClip}</span>
-          {activeClip==='title-overlay' && <span>duration: {layout.titleDuration}s · drag right edge to resize</span>}
-          {activeClip.startsWith('rc') && <span>random clip · position auto-generated at render</span>}
-          {activeClip==='cr' && <span>start: {sourceMode.customRange.startSec}s · end: {sourceMode.customRange.endSec}s · drag to move, drag right edge to resize</span>}
-          {activeClip.startsWith('mc') && (() => { const i=+activeClip.slice(2); const c=sourceMode.multiClip.clips[i]; return c?<span>start: {c.startSec}s · dur: {c.durationSec}s · drag to move, drag right edge to resize</span>:null })()}
-          {activeClip==='skip' && <span>skip: {sourceMode.sequential.skipSec}s · drag right edge to adjust</span>}
-          {activeClip==='fn' && <span>first N: {sourceMode.firstN.durationSec}s · drag right edge to adjust</span>}
-          <span className="text-slate-300">|</span>
-          <button className="text-slate-400 hover:text-slate-700" onClick={()=>setActiveClip(null)}>deselect ×</button>
+        <div className="flex items-center gap-3 px-3 py-1.5 border-t border-slate-100 bg-white text-[9px] font-mono">
+          <span className="font-bold text-blue-600 shrink-0">{activeClip}</span>
+
+          {/* custom_range: start + end inputs */}
+          {activeClip==='cr' && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400">start</span>
+              <input type="number" min={0} max={totalDuration} value={sourceMode.customRange.startSec}
+                onChange={e=>setSubSm('customRange',{startSec:Math.max(0,+e.target.value)})}
+                className="w-14 h-5 px-1 text-[10px] bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono text-slate-700"/>
+              <span className="text-slate-400">s · end</span>
+              <input type="number" min={0} max={totalDuration} value={sourceMode.customRange.endSec}
+                onChange={e=>setSubSm('customRange',{endSec:Math.min(totalDuration,+e.target.value)})}
+                className="w-14 h-5 px-1 text-[10px] bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono text-slate-700"/>
+              <span className="text-slate-400">s · dur: <strong className="text-slate-700">{sourceMode.customRange.endSec-sourceMode.customRange.startSec}s</strong></span>
+            </div>
+          )}
+
+          {/* multi_clip: start + duration inputs */}
+          {activeClip.startsWith('mc') && (() => {
+            const i=+activeClip.slice(2); const c=sourceMode.multiClip.clips[i]
+            if(!c) return null
+            return (
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400">start</span>
+                <input type="number" min={0} max={totalDuration} value={c.startSec}
+                  onChange={e=>{const clips=[...sourceMode.multiClip.clips];clips[i]={...clips[i],startSec:+e.target.value};setSubSm('multiClip',{clips})}}
+                  className="w-14 h-5 px-1 text-[10px] bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono text-slate-700"/>
+                <span className="text-slate-400">s · dur</span>
+                <input type="number" min={1} max={totalDuration} value={c.durationSec}
+                  onChange={e=>{const clips=[...sourceMode.multiClip.clips];clips[i]={...clips[i],durationSec:Math.max(1,+e.target.value)};setSubSm('multiClip',{clips})}}
+                  className="w-14 h-5 px-1 text-[10px] bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono text-slate-700"/>
+                <span className="text-slate-400">s</span>
+              </div>
+            )
+          })()}
+
+          {/* sequential skip */}
+          {activeClip==='skip' && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400">skip</span>
+              <input type="number" min={0} max={totalDuration} value={sourceMode.sequential.skipSec}
+                onChange={e=>setSubSm('sequential',{skipSec:Math.max(0,+e.target.value)})}
+                className="w-16 h-5 px-1 text-[10px] bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono text-slate-700"/>
+              <span className="text-slate-400">s</span>
+            </div>
+          )}
+
+          {/* first N */}
+          {activeClip==='fn' && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400">duration</span>
+              <input type="number" min={1} max={totalDuration} value={sourceMode.firstN.durationSec}
+                onChange={e=>setSubSm('firstN',{durationSec:Math.max(1,+e.target.value)})}
+                className="w-16 h-5 px-1 text-[10px] bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono text-slate-700"/>
+              <span className="text-slate-400">s</span>
+            </div>
+          )}
+
+          {/* title overlay duration */}
+          {activeClip==='title-overlay' && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400">title duration</span>
+              <input type="number" min={1} max={totalDuration} value={layout.titleDuration}
+                onChange={e=>onLayout({titleDuration:Math.max(1,+e.target.value)})}
+                className="w-14 h-5 px-1 text-[10px] bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono text-slate-700"/>
+              <span className="text-slate-400">s</span>
+            </div>
+          )}
+
+          {activeClip.startsWith('rc') && <span className="text-slate-400">random clip · auto-generated at render</span>}
+
+          <div className="flex-1"/>
+          <button className="text-slate-400 hover:text-slate-700 text-[9px]" onClick={()=>setActiveClip(null)}>× deselect</button>
         </div>
       )}
     </div>
@@ -815,6 +906,8 @@ export default function EditorPage() {
   const [renderLogs,setRenderLogs]=useState<{msg:string;level:string}[]>([])
   const [showLogs,setShowLogs]=useState(false)
   const [zoom,setZoom]=useState(1.0)
+  const [totalDuration,setTotalDuration]=useState(160)
+  const [voiceDurationSec,setVoiceDurationSec]=useState<number|null>(null)
   const [userPresets,setUserPresets]=useState<Preset[]>([])
   const [activePresetId,setActivePresetId]=useState<string>('standard')
   const [mediaSearch,setMediaSearch]=useState('')
@@ -827,6 +920,12 @@ export default function EditorPage() {
       if(c?.sourceMode) setSourceMode(prev=>({...prev,...(c.sourceMode as Partial<SourceModeConfig>)}))
     }).catch(()=>{})
     fetch('/api/videos').then(r=>r.json()).then((v:VideoItem[])=>setVideos(Array.isArray(v)?v:[])).catch(()=>{})
+    // Fetch latest rendered video's voice duration
+    fetch('/api/videos?type=rendered').then(r=>r.json()).then((rv:{voiceDurationSec?:number|null}[])=>{
+      if(Array.isArray(rv)&&rv.length>0&&rv[0].voiceDurationSec!=null){
+        setVoiceDurationSec(rv[0].voiceDurationSec)
+      }
+    }).catch(()=>{})
   },[])
 
   const onLayout=useCallback((l:Partial<Layout>)=>setLayout(prev=>({...prev,...l})),[])
@@ -1118,7 +1217,13 @@ export default function EditorPage() {
 
           {/* ── TIMELINE ────────────────────────────────────────────────────── */}
           <div className="shrink-0">
-            <Timeline sourceMode={sourceMode} onSourceModeChange={setSourceMode} layout={layout} onLayout={onLayout} renderLogs={renderLogs} rendering={rendering} showLogs={showLogs}/>
+            <Timeline
+              sourceMode={sourceMode} onSourceModeChange={setSourceMode}
+              layout={layout} onLayout={onLayout}
+              totalDuration={totalDuration} onTotalDurationChange={setTotalDuration}
+              renderLogs={renderLogs} rendering={rendering} showLogs={showLogs}
+              voiceDurationSec={voiceDurationSec}
+            />
             {/* Log toggle */}
             <div className="flex items-center justify-end gap-2 px-3 py-1 border-t border-slate-200 bg-slate-50">
               <button onClick={()=>setShowLogs(l=>!l)}
