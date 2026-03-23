@@ -54,7 +54,8 @@ const CONFIG = {
     },
     layout: SHARED_CONFIG.layout,
     audio: SHARED_CONFIG.audio,
-    video: SHARED_CONFIG.video
+    video: SHARED_CONFIG.video,
+    fx: SHARED_CONFIG.fx || {}
 };
 
 // ==========================================
@@ -334,11 +335,58 @@ async function generateFFmpegCommand(inputs, outputVideo, duration) {
         `[trimmed_main_video][final_blurred_template]overlay=x=${templateX}:y=${templateY}[video_with_template]`
     );
 
+    // 4b. FX: color grading (eq), fade, vignette applied to composite
+    const fx = CONFIG.fx || {};
+    let fxStream = 'video_with_template';
+
+    // Speed (setpts on main video — applied before composite via separate label)
+    const speed = parseFloat(fx.speed) || 1;
+    if (speed !== 1) {
+        const pts = (1 / speed).toFixed(4);
+        // Re-speed the composite output
+        filterComplexParts.push(`[${fxStream}]setpts=${pts}*PTS[fxspeed_video]`);
+        fxStream = 'fxspeed_video';
+        // Also speed the main audio proc
+        filterComplexParts.push(`[main_audio_proc]atempo=${speed}[main_audio_proc_speed]`);
+        // replace reference to main_audio_proc in amix later
+    }
+
+    // Color grading (eq filter)
+    const brightness = parseFloat(fx.brightness) ?? 0;
+    const contrast = parseFloat(fx.contrast) ?? 1;
+    const saturation = parseFloat(fx.saturation) ?? 1;
+    if (brightness !== 0 || contrast !== 1 || saturation !== 1) {
+        filterComplexParts.push(
+            `[${fxStream}]eq=brightness=${brightness.toFixed(3)}:contrast=${contrast.toFixed(3)}:saturation=${saturation.toFixed(3)}[fxeq_video]`
+        );
+        fxStream = 'fxeq_video';
+    }
+
+    // Fade in/out
+    const fadeIn = parseFloat(fx.fadeInDur) || 0;
+    const fadeOut = parseFloat(fx.fadeOutDur) || 0;
+    if (fadeIn > 0) {
+        filterComplexParts.push(`[${fxStream}]fade=t=in:st=0:d=${fadeIn}[fxfadein_video]`);
+        fxStream = 'fxfadein_video';
+    }
+    if (fadeOut > 0) {
+        filterComplexParts.push(`[${fxStream}]fade=t=out:st=${duration - fadeOut}:d=${fadeOut}[fxfadeout_video]`);
+        fxStream = 'fxfadeout_video';
+    }
+
+    // Vignette
+    if (fx.vignette === true) {
+        filterComplexParts.push(`[${fxStream}]vignette[fxvignette_video]`);
+        fxStream = 'fxvignette_video';
+    }
+
+    const mainAudioLabel = speed !== 1 ? 'main_audio_proc_speed' : 'main_audio_proc';
+
     // 5. Title overlay
-    let videoStream = 'video_with_template';
+    let videoStream = fxStream;
     if (titleImage && fs.existsSync(titleImage)) {
         filterComplexParts.push(
-            `[video_with_template][${titleIdx}:v]overlay=x=0:y=${titleY}:enable='between(t,0,${titleDuration})'[video_with_title]`
+            `[${fxStream}][${titleIdx}:v]overlay=x=0:y=${titleY}:enable='between(t,0,${titleDuration})'[video_with_title]`
         );
         videoStream = 'video_with_title';
     }
@@ -351,7 +399,7 @@ async function generateFFmpegCommand(inputs, outputVideo, duration) {
 
     // 7. Audio mix
     filterComplexParts.push(
-        `[main_audio_proc][processed_sound][processed_voice]amix=inputs=3:duration=longest[outa]`
+        `[${mainAudioLabel}][processed_sound][processed_voice]amix=inputs=3:duration=longest[outa]`
     );
 
     const filterComplex = filterComplexParts.join(";");

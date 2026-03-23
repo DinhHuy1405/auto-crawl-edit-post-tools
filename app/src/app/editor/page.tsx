@@ -29,6 +29,16 @@ interface Layout {
   titleDuration: number; mainVideoSkip: number
 }
 interface AudioConfig { mainVideo: number; backgroundMusic: number; voiceNarration: number }
+interface FxConfig {
+  brightness: number   // eq brightness: -1.0 to 1.0, default 0
+  contrast: number     // eq contrast: 0.0 to 2.0, default 1
+  saturation: number   // eq saturation: 0.0 to 3.0, default 1
+  speed: number        // setpts/atempo multiplier: 0.5 to 2.0, default 1
+  fadeInDur: number    // fade in duration secs, 0 = disabled
+  fadeOutDur: number   // fade out duration secs, 0 = disabled
+  vignette: boolean    // vignette overlay
+}
+const DEFAULT_FX: FxConfig = { brightness: 0, contrast: 1, saturation: 1, speed: 1, fadeInDur: 0, fadeOutDur: 0, vignette: false }
 interface VideoItem { id: string; title: string; path: string }
 interface LayersVis { mainVideo: boolean; templateVideo: boolean; blurZones: boolean; title: boolean; logo: boolean }
 
@@ -170,21 +180,6 @@ function Canvas({ layout, onLayout, blurZones, onBlurZones, videoUrl, activeElem
             <Film style={{width:Math.max(8,tplCW*0.1),height:Math.max(8,tplCW*0.1)}} className="text-blue-400/40"/>
             <span className="text-blue-300/50 font-mono" style={{fontSize:Math.max(5,tplCW*0.035)}}>Template</span>
           </div>
-          {/* Blur zones inside template */}
-          {layers.blurZones && blurZones.map(z=>{
-            const bzKey:ActiveEl=`blur-${z.id}`,isA=activeElement===bzKey
-            const bScale=tplCW/layout.templateW
-            const bx=z.x*bScale,by=z.y*bScale,bw=Math.max(4,z.w*bScale),bh=Math.max(3,z.h*bScale)
-            return <div key={z.id}
-              className={cn('absolute border border-dashed cursor-move',isA?'border-orange-400 bg-orange-400/25 z-20':'border-orange-400/50 bg-orange-400/10 hover:bg-orange-400/20 z-10')}
-              style={{left:bx,top:by,width:bw,height:bh}}
-              onMouseDown={e=>startMove(e,bzKey,()=>[z.x,z.y],(nx,ny)=>onBlurZones(blurZones.map(b=>b.id===z.id?{...b,x:nx,y:ny}:b)))}
-              onClick={e=>{e.stopPropagation();setActiveElement(bzKey)}}>
-              <div className="absolute inset-0 pointer-events-none" style={{backdropFilter:'blur(3px)',WebkitBackdropFilter:'blur(3px)'}}/>
-              <span className="absolute top-0 left-0.5 text-orange-300 font-bold pointer-events-none leading-none" style={{fontSize:Math.max(5,bw*0.2)}}>{z.label}</span>
-              {isA && <ResizeHandles w={bw} h={bh} onHandle={(e,h)=>startResize(e,h,{x:z.x,y:z.y,w:z.w,h:z.h},b=>onBlurZones(blurZones.map(bl=>bl.id===z.id?{...bl,...b}:bl)),10,5)}/>}
-            </div>
-          })}
           {/* Drag handle */}
           <div className="absolute top-0 left-0 right-0 flex items-center px-1 gap-1 cursor-move z-30"
             style={{height:Math.max(10,tplCH*0.065),background:'rgba(37,99,235,0.75)'}}
@@ -195,6 +190,22 @@ function Canvas({ layout, onLayout, blurZones, onBlurZones, videoUrl, activeElem
           {activeElement==='template' && <ResizeHandles w={tplCW} h={tplCH} onHandle={(e,h)=>startResize(e,h,{x:layout.templateX,y:layout.templateY,w:layout.templateW,h:tplRH},b=>onLayout({templateX:b.x,templateY:b.y,templateW:b.w,templateH:layout.templateH===-1?-1:b.h}),80,40)}/>}
         </div>
       )}
+
+      {/* Blur zones — rendered independently so they show even when template layer is hidden */}
+      {layers.blurZones && blurZones.map(z=>{
+        const bzKey:ActiveEl=`blur-${z.id}`,isA=activeElement===bzKey
+        const bScale=tplCW/layout.templateW
+        const bx=tplCX+z.x*bScale,by=tplCY+z.y*bScale,bw=Math.max(4,z.w*bScale),bh=Math.max(3,z.h*bScale)
+        return <div key={z.id}
+          className={cn('absolute border border-dashed cursor-move',isA?'border-orange-400 bg-orange-400/25 z-20':'border-orange-400/50 bg-orange-400/10 hover:bg-orange-400/20 z-10')}
+          style={{left:bx,top:by,width:bw,height:bh}}
+          onMouseDown={e=>startMove(e,bzKey,()=>[z.x,z.y],(nx,ny)=>onBlurZones(blurZones.map(b=>b.id===z.id?{...b,x:nx,y:ny}:b)))}
+          onClick={e=>{e.stopPropagation();setActiveElement(bzKey)}}>
+          <div className="absolute inset-0 pointer-events-none" style={{backdropFilter:'blur(3px)',WebkitBackdropFilter:'blur(3px)'}}/>
+          <span className="absolute top-0 left-0.5 text-orange-300 font-bold pointer-events-none leading-none" style={{fontSize:8}}>{z.label}</span>
+          {isA && <ResizeHandles w={bw} h={bh} onHandle={(e,h)=>startResize(e,h,{x:z.x,y:z.y,w:z.w,h:z.h},b=>onBlurZones(blurZones.map(bl=>bl.id===z.id?{...bl,...b}:bl)),10,5)}/>}
+        </div>
+      })}
 
       {/* Title */}
       {layers.title && (
@@ -908,6 +919,8 @@ export default function EditorPage() {
   const [zoom,setZoom]=useState(1.0)
   const [totalDuration,setTotalDuration]=useState(160)
   const [voiceDurationSec,setVoiceDurationSec]=useState<number|null>(null)
+  const [fx,setFx]=useState<FxConfig>(DEFAULT_FX)
+  const updateFx=(patch:Partial<FxConfig>)=>setFx(prev=>({...prev,...patch}))
   const [userPresets,setUserPresets]=useState<Preset[]>([])
   const [activePresetId,setActivePresetId]=useState<string>('standard')
   const [mediaSearch,setMediaSearch]=useState('')
@@ -918,6 +931,7 @@ export default function EditorPage() {
       if(c?.layout) setLayout(prev=>({...prev,...(c.layout as Partial<Layout>)}))
       if(c?.audio){const a=c.audio as {volumes?:Partial<AudioConfig>};if(a.volumes)setAudio(prev=>({...prev,...a.volumes}))}
       if(c?.sourceMode) setSourceMode(prev=>({...prev,...(c.sourceMode as Partial<SourceModeConfig>)}))
+      if(c?.fx) setFx(prev=>({...prev,...(c.fx as Partial<FxConfig>)}))
     }).catch(()=>{})
     fetch('/api/videos').then(r=>r.json()).then((v:VideoItem[])=>setVideos(Array.isArray(v)?v:[])).catch(()=>{})
     // Fetch latest rendered video's voice duration
@@ -952,7 +966,7 @@ export default function EditorPage() {
   const saveLayout=async()=>{
     setSaving(true)
     try{
-      const next={...config,layout:{...(config?.layout as object||{}),...layout,logoScale:`${layout.logoW}:${layout.logoH}`},audio:{...(config?.audio as object||{}),volumes:audio},sourceMode}
+      const next={...config,layout:{...(config?.layout as object||{}),...layout,logoScale:`${layout.logoW}:${layout.logoH}`},audio:{...(config?.audio as object||{}),volumes:audio},sourceMode,fx}
       await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)})
       setConfig(next);toast.success('Saved!')
     }catch{toast.error('Failed')}finally{setSaving(false)}
@@ -1163,6 +1177,110 @@ export default function EditorPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {leftTab==='effects' && (
+                <div className="px-1 py-2 space-y-4">
+                  {/* Color grading */}
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Color · FFmpeg eq</p>
+                    {([
+                      {label:'Brightness', key:'brightness' as const, min:-1, max:1, step:0.05, defaultVal:0, color:'#f59e0b', fmt:(v:number)=>(v>=0?'+':'')+v.toFixed(2)},
+                      {label:'Contrast',   key:'contrast'   as const, min:0,  max:2, step:0.05, defaultVal:1, color:'#6366f1', fmt:(v:number)=>v.toFixed(2)+'x'},
+                      {label:'Saturation', key:'saturation' as const, min:0,  max:3, step:0.05, defaultVal:1, color:'#ec4899', fmt:(v:number)=>v.toFixed(2)+'x'},
+                    ] as {label:string;key:keyof FxConfig;min:number;max:number;step:number;defaultVal:number;color:string;fmt:(v:number)=>string}[]).map(s=>(
+                      <div key={s.key} className="space-y-1 mb-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-semibold text-slate-600">{s.label}</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-mono font-bold text-slate-700">{s.fmt(fx[s.key] as number)}</span>
+                            {(fx[s.key] as number) !== s.defaultVal && (
+                              <button onClick={()=>updateFx({[s.key]:s.defaultVal})} className="text-[8px] text-slate-400 hover:text-red-400 leading-none">↺</button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="absolute top-0 h-full rounded-full transition-all" style={{
+                            left: s.key==='brightness' ? `${((fx[s.key] as number)-s.min)/(s.max-s.min)*100}%` : s.key==='contrast'||s.key==='saturation' ? `${(s.defaultVal-s.min)/(s.max-s.min)*100}%` : '0%',
+                            width: s.key==='brightness'
+                              ? `${Math.abs((fx[s.key] as number))/s.max*50}%`
+                              : `${Math.abs(((fx[s.key] as number)-s.defaultVal)/(s.max-s.min))*100}%`,
+                            background: s.color
+                          }}/>
+                          <input type="range" min={s.min} max={s.max} step={s.step} value={fx[s.key] as number}
+                            onChange={e=>updateFx({[s.key]:+e.target.value})}
+                            className="absolute inset-0 w-full opacity-0 cursor-pointer"/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Speed */}
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Speed · setpts / atempo</p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-semibold text-slate-600">Playback Speed</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-mono font-bold text-slate-700">{fx.speed.toFixed(2)}x</span>
+                          {fx.speed!==1 && <button onClick={()=>updateFx({speed:1})} className="text-[8px] text-slate-400 hover:text-red-400">↺</button>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {[0.5,0.75,1,1.25,1.5,2].map(v=>(
+                          <button key={v} onClick={()=>updateFx({speed:v})}
+                            className={cn('flex-1 py-1 text-[9px] font-bold rounded border transition-all',
+                              fx.speed===v ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300')}>
+                            {v}x
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[8px] text-slate-400">{'<'}1x slow motion · {'>'}1x fast forward</p>
+                    </div>
+                  </div>
+
+                  {/* Fade */}
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fade · FFmpeg fade filter</p>
+                    <div className="space-y-2">
+                      {([
+                        {label:'Fade In',  key:'fadeInDur'  as const, icon:'▶'},
+                        {label:'Fade Out', key:'fadeOutDur' as const, icon:'◀'},
+                      ]).map(f=>(
+                        <div key={f.key} className="flex items-center gap-2">
+                          <span className="text-[9px] text-slate-500 w-14">{f.icon} {f.label}</span>
+                          <input type="number" min={0} max={10} step={0.5} value={fx[f.key]}
+                            onChange={e=>updateFx({[f.key]:Math.max(0,+e.target.value)})}
+                            className="w-14 h-6 px-1.5 text-[10px] font-mono text-slate-700 bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"/>
+                          <span className="text-[9px] text-slate-400">s</span>
+                          {(fx[f.key] as number)>0 && <span className="text-[8px] text-emerald-500 font-bold">ON</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Vignette */}
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Effects</p>
+                    <button onClick={()=>updateFx({vignette:!fx.vignette})}
+                      className={cn('w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-[10px] font-semibold transition-all',
+                        fx.vignette ? 'bg-slate-900 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300')}>
+                      <span className="text-sm">◉</span>
+                      Vignette
+                      <span className={cn('ml-auto text-[8px] font-bold px-1.5 py-0.5 rounded-full',fx.vignette?'bg-white/20 text-white':'bg-slate-100 text-slate-400')}>
+                        {fx.vignette?'ON':'OFF'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Reset all */}
+                  {JSON.stringify(fx)!==JSON.stringify(DEFAULT_FX) && (
+                    <button onClick={()=>setFx(DEFAULT_FX)}
+                      className="w-full py-1.5 text-[10px] font-semibold text-red-500 border border-red-200 rounded-xl hover:bg-red-50 transition-colors">
+                      Reset all FX
+                    </button>
+                  )}
                 </div>
               )}
             </div>
