@@ -339,22 +339,19 @@ async function generateFFmpegCommand(inputs, outputVideo, duration) {
     const fx = CONFIG.fx || {};
     let fxStream = 'video_with_template';
 
-    // Speed (setpts on main video — applied before composite via separate label)
-    const speed = parseFloat(fx.speed) || 1;
+    // Speed
+    const speed = (typeof fx.speed === 'number' && isFinite(fx.speed)) ? fx.speed : 1;
     if (speed !== 1) {
         const pts = (1 / speed).toFixed(4);
-        // Re-speed the composite output
         filterComplexParts.push(`[${fxStream}]setpts=${pts}*PTS[fxspeed_video]`);
         fxStream = 'fxspeed_video';
-        // Also speed the main audio proc
         filterComplexParts.push(`[main_audio_proc]atempo=${speed}[main_audio_proc_speed]`);
-        // replace reference to main_audio_proc in amix later
     }
 
-    // Color grading (eq filter)
-    const brightness = parseFloat(fx.brightness) ?? 0;
-    const contrast = parseFloat(fx.contrast) ?? 1;
-    const saturation = parseFloat(fx.saturation) ?? 1;
+    // Color grading — only apply eq if any value differs from default
+    const brightness = (typeof fx.brightness === 'number' && isFinite(fx.brightness)) ? fx.brightness : 0;
+    const contrast   = (typeof fx.contrast   === 'number' && isFinite(fx.contrast))   ? fx.contrast   : 1;
+    const saturation = (typeof fx.saturation === 'number' && isFinite(fx.saturation)) ? fx.saturation : 1;
     if (brightness !== 0 || contrast !== 1 || saturation !== 1) {
         filterComplexParts.push(
             `[${fxStream}]eq=brightness=${brightness.toFixed(3)}:contrast=${contrast.toFixed(3)}:saturation=${saturation.toFixed(3)}[fxeq_video]`
@@ -363,8 +360,8 @@ async function generateFFmpegCommand(inputs, outputVideo, duration) {
     }
 
     // Fade in/out
-    const fadeIn = parseFloat(fx.fadeInDur) || 0;
-    const fadeOut = parseFloat(fx.fadeOutDur) || 0;
+    const fadeIn  = (typeof fx.fadeInDur  === 'number' && fx.fadeInDur  > 0) ? fx.fadeInDur  : 0;
+    const fadeOut = (typeof fx.fadeOutDur === 'number' && fx.fadeOutDur > 0) ? fx.fadeOutDur : 0;
     if (fadeIn > 0) {
         filterComplexParts.push(`[${fxStream}]fade=t=in:st=0:d=${fadeIn}[fxfadein_video]`);
         fxStream = 'fxfadein_video';
