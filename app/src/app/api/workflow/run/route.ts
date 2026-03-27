@@ -20,7 +20,7 @@ const runningProcesses = new Map<string, ReturnType<typeof spawn>>()
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
-  const { step, runId } = await req.json()
+  const { step, runId, force } = await req.json()
 
   // Prefer project venv python if present (keeps same environment as run-workflow.mjs)
   const venvPython = path.join(ROOT_DIR, '.venv', 'bin', 'python3')
@@ -53,9 +53,9 @@ export async function POST(req: NextRequest) {
     },
     render: {
       cmd: 'node',
-      args: ['run.mjs'],
+      args: force ? ['run.mjs', '--reset-status'] : ['run.mjs'],
       cwd: path.join(ROOT_DIR, 'edit-video'),
-      label: '🎬 Rendering videos...',
+      label: force ? '🔄 Re-rendering videos...' : '🎬 Rendering videos...',
     },
     'prepare-upload': {
       cmd: 'node',

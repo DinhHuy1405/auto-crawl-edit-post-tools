@@ -928,10 +928,11 @@ export default function EditorPage() {
   useEffect(()=>{
     fetch('/api/config').then(r=>r.json()).then((c:Record<string,unknown>)=>{
       setConfig(c)
-      if(c?.layout) setLayout(prev=>({...prev,...(c.layout as Partial<Layout>)}))
+      if(c?.layout){const {blurZones:_bz,...restLayout}=c.layout as Partial<Layout>&{blurZones?:unknown};setLayout(prev=>({...prev,...restLayout}))}
       if(c?.audio){const a=c.audio as {volumes?:Partial<AudioConfig>};if(a.volumes)setAudio(prev=>({...prev,...a.volumes}))}
       if(c?.sourceMode) setSourceMode(prev=>({...prev,...(c.sourceMode as Partial<SourceModeConfig>)}))
       if(c?.fx) setFx(prev=>({...prev,...(c.fx as Partial<FxConfig>)}))
+      if(Array.isArray(c?.blurZones)) setBlurZones(c.blurZones as BlurZone[])
     }).catch(()=>{})
     fetch('/api/videos').then(r=>r.json()).then((v:VideoItem[])=>setVideos(Array.isArray(v)?v:[])).catch(()=>{})
     // Fetch latest rendered video's voice duration
@@ -966,7 +967,8 @@ export default function EditorPage() {
   const saveLayout=async()=>{
     setSaving(true)
     try{
-      const next={...config,layout:{...(config?.layout as object||{}),...layout,logoScale:`${layout.logoW}:${layout.logoH}`},audio:{...(config?.audio as object||{}),volumes:audio},sourceMode,fx}
+      const {blurZones:_bz,...configLayout}=((config?.layout||{}) as Record<string,unknown>)
+      const next={...config,layout:{...configLayout,...layout,logoScale:`${layout.logoW}:${layout.logoH}`},audio:{...(config?.audio as object||{}),volumes:audio},sourceMode,fx,blurZones}
       await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)})
       setConfig(next);toast.success('Saved!')
     }catch{toast.error('Failed')}finally{setSaving(false)}

@@ -36,6 +36,26 @@ const SHARED_CONFIG = JSON.parse(
 // ==========================================
 // ⚙️ MODULE-SPECIFIC CONFIGURATION
 // ==========================================
+const FORCE_RERENDER = process.argv.includes('--force');
+if (FORCE_RERENDER) console.log("⚡ --force mode: will re-render videos with status 'done'");
+
+// --reset-status: reset all non-skip videos back to 'not yet' before rendering
+const RESET_STATUS = process.argv.includes('--reset-status');
+if (RESET_STATUS) {
+    try {
+        const videosJsonPath = path.join(__dirname, "videos.json");
+        if (fs.existsSync(videosJsonPath)) {
+            const data = JSON.parse(fs.readFileSync(videosJsonPath, "utf8"));
+            const reset = data.map(v => v.skip ? v : { ...v, status: "not yet" });
+            fs.writeFileSync(videosJsonPath, JSON.stringify(reset, null, 2), "utf8");
+            const count = reset.filter(v => !v.skip).length;
+            console.log(`🔄 Reset status for ${count} video(s) to 'not yet' (skipped videos preserved)`);
+        }
+    } catch (e) {
+        console.error("⚠️ Could not reset videos.json status:", e.message);
+    }
+}
+
 const CONFIG = {
     files: {
         videosJson: path.join(__dirname, "videos.json"),
@@ -269,7 +289,7 @@ async function generateFFmpegCommand(inputs, outputVideo, duration) {
         templateW = 1440, templateH = -1,
         logoX, logoY,
         logoW: cfgLogoW, logoH: cfgLogoH, logoScale,
-        titleY = 1150, titleW = 1440, titleH = 300, titleDuration = 5,
+        titleX = 0, titleY = 1150, titleW = 1440, titleH = 300, titleDuration = 5,
     } = CONFIG.layout;
     const [logoW, logoH] = (cfgLogoW && cfgLogoH)
         ? [cfgLogoW, cfgLogoH]
@@ -305,7 +325,7 @@ async function generateFFmpegCommand(inputs, outputVideo, duration) {
     );
 
     // 3. Template video with blur zones
-    const blurZones = Array.isArray(CONFIG.layout.blurZones) ? CONFIG.layout.blurZones : [];
+    const blurZones = Array.isArray(CONFIG.blurZones) ? CONFIG.blurZones : (Array.isArray(CONFIG.layout.blurZones) ? CONFIG.layout.blurZones : []);
     filterComplexParts.push(`[${tplIdx}:v]scale=${templateW}:${templateH}[scaled_template]`);
 
     if (blurZones.length === 0) {
@@ -383,7 +403,7 @@ async function generateFFmpegCommand(inputs, outputVideo, duration) {
     let videoStream = fxStream;
     if (titleImage && fs.existsSync(titleImage)) {
         filterComplexParts.push(
-            `[${fxStream}][${titleIdx}:v]overlay=x=0:y=${titleY}:enable='between(t,0,${titleDuration})'[video_with_title]`
+            `[${fxStream}][${titleIdx}:v]overlay=x=${titleX}:y=${titleY}:enable='between(t,0,${titleDuration})'[video_with_title]`
         );
         videoStream = 'video_with_title';
     }
@@ -454,8 +474,13 @@ async function processBatch() {
         console.log(`\n======================================================`);
         console.log(`🎥 Processing Video ${index + 1}/${videosData.length}: "${video.title}"`);
         
-        if (video.status && video.status.toLowerCase() === "done") {
-            console.log(`   ⏭️ Status is 'done'. Skipping...`);
+        if (video.skip) {
+            console.log(`   ⏭️ Marked as skip. Skipping...`);
+            continue;
+        }
+
+        if (video.status && video.status.toLowerCase() === "done" && !FORCE_RERENDER) {
+            console.log(`   ⏭️ Status is 'done'. Skipping... (use --force to re-render)`);
             continue;
         }
 

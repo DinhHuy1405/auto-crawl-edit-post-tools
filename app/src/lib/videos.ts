@@ -10,6 +10,7 @@ export interface VideoEntry {
   imageLink: string
   status: 'not yet' | 'done' | 'error'
   outputPath: string
+  skip?: boolean
 }
 
 export interface UploadVideo {

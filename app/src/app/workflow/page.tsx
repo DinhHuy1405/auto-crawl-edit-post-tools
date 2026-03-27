@@ -3,7 +3,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
-  Play, Square, RotateCcw,
+  Play, Square, RotateCcw, FastForward,
   Loader2, Plus, Link as LinkIcon,
   Pencil, Trash2, Check, X, Video, EyeOff,
 } from 'lucide-react'
@@ -241,16 +241,16 @@ export default function WorkflowPage() {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status, duration: dur } : s))
   }, [])
 
-  const runStep = useCallback(async (stepId: string): Promise<boolean> => {
+  const runStep = useCallback(async (stepId: string, force = false): Promise<boolean> => {
     updStep(stepId, 'running')
     startTimeRef.current[stepId] = Date.now()
-    addLog(`▶ ${STEPS.find(s => s.id === stepId)?.label}`, 'info')
+    addLog(`▶ ${STEPS.find(s => s.id === stepId)?.label}${force ? ' (force)' : ''}`, 'info')
     try {
       const ctrl = new AbortController()
       abortRef.current = ctrl
       const res = await fetch('/api/workflow/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step: stepId, runId }), signal: ctrl.signal,
+        body: JSON.stringify({ step: stepId, runId, force }), signal: ctrl.signal,
       })
       if (!res.ok || !res.body) { updStep(stepId, 'error'); return false }
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''; let ok = false
@@ -292,11 +292,32 @@ export default function WorkflowPage() {
   }, [runStep, addLog])
 
   const runSingle = useCallback(async (id: string) => {
+    const isRenderStep = ['prepare', 'render'].includes(id)
+    const currentStatus = steps.find(s => s.id === id)?.status
+    const force = isRenderStep && currentStatus === 'done'
     setIsRunning(true)
-    await runStep(id)
+    setSteps(prev => prev.map(s => s.id === id ? { ...s, status: 'pending' } : s))
+    await runStep(id, force)
     setIsRunning(false)
     toast.success(`Step completed: ${STEPS.find(s => s.id === id)?.label}`)
-  }, [runStep])
+  }, [runStep, steps])
+
+  const runFrom = useCallback(async (fromId: string, force = false) => {
+    const startIdx = STEPS.findIndex(s => s.id === fromId)
+    if (startIdx < 0) return
+    setIsRunning(true)
+    setLogs([])
+    // Reset all steps from startIdx onwards
+    setSteps(prev => prev.map((s, i) => i >= startIdx ? { ...s, status: 'pending' } : s))
+    addLog(`Starting from: ${STEPS[startIdx].label}${force ? ' (force re-render)' : ''}`, 'info')
+    for (let i = startIdx; i < STEPS.length; i++) {
+      // Pass force only to prepare+render steps
+      const isRenderStep = ['prepare', 'render'].includes(STEPS[i].id)
+      const ok = await runStep(STEPS[i].id, force && isRenderStep)
+      if (!ok) { addLog(`Stopped at: ${STEPS[i].label}`, 'error'); toast.error(`Stopped at: ${STEPS[i].label}`); break }
+    }
+    setIsRunning(false); addLog('Workflow finished', 'info'); toast.success('Workflow complete!')
+  }, [runStep, addLog])
 
   const stop = () => {
     abortRef.current?.abort()
@@ -474,9 +495,19 @@ export default function WorkflowPage() {
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm px-8 py-5">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-base font-bold text-slate-800">System Pipeline</h3>
-          <div className="flex items-center gap-4 text-xs text-slate-500">
-            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Active</span>
-            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />Waiting</span>
+          <div className="flex items-center gap-3">
+            {done > 0 && !isRunning && (
+              <button
+                onClick={() => runSingle('render')}
+                title="Render lại — giữ nguyên videos.json và các video đã bỏ qua"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors">
+                <RotateCcw className="w-3 h-3" />Re-render
+              </button>
+            )}
+            <div className="flex items-center gap-4 text-xs text-slate-500">
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Active</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />Waiting</span>
+            </div>
           </div>
         </div>
         <div className="relative">
@@ -493,10 +524,13 @@ export default function WorkflowPage() {
               const isRun     = step.status === 'running'
               const isError   = step.status === 'error'
               const isSkipped = step.status === 'skipped'
+              const canClick = !isRunning && !isRun
               return (
-                <div key={step.id} className="text-center group">
+                <div key={step.id} className="text-center group relative">
                   <button
-                    onClick={() => step.status === 'pending' && !isRunning ? runSingle(step.id) : undefined}
+                    onClick={() => canClick ? runSingle(step.id) : undefined}
+                    disabled={!canClick}
+                    title={canClick ? (isDone ? `Re-run ${step.label}` : `Run ${step.label}`) : undefined}
                     className={cn(
                       'w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-3 border-2 bg-white transition-all',
                       isDone    ? 'border-emerald-500 bg-emerald-50 text-emerald-600' :
@@ -504,7 +538,11 @@ export default function WorkflowPage() {
                       isError   ? 'border-red-400 bg-red-50 text-red-500' :
                       isSkipped ? 'border-amber-400 bg-amber-50 text-amber-500' :
                                   'border-slate-200 text-slate-400',
-                      step.status === 'pending' && !isRunning && 'hover:border-blue-300 hover:text-blue-500 cursor-pointer'
+                      canClick && isDone    && 'hover:border-emerald-400 hover:bg-emerald-100 cursor-pointer',
+                      canClick && isError   && 'hover:border-red-400 hover:bg-red-100 cursor-pointer',
+                      canClick && isSkipped && 'hover:border-blue-300 hover:bg-blue-50 cursor-pointer',
+                      canClick && !isDone && !isError && !isSkipped && 'hover:border-blue-300 hover:text-blue-500 cursor-pointer',
+                      !canClick && 'cursor-not-allowed'
                     )}>
                     {isRun ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -531,6 +569,26 @@ export default function WorkflowPage() {
                   )}>
                     {isRun ? 'Running...' : isDone ? `${step.duration ?? ''}s` : isError ? 'Error' : 'Pending'}
                   </p>
+                  
+                  {/* Actions — visible on hover if idle */}
+                  {canClick && (
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-1 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                      <button
+                        onClick={e => { e.stopPropagation(); runSingle(step.id) }}
+                        className="w-full text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Chạy lại bước này
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); runFrom(step.id, isDone) }}
+                        className="w-full text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2"
+                      >
+                        <FastForward className="w-3.5 h-3.5" />
+                        Chạy từ đây tới cuối
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readUploadDatabase, writeUploadDatabase } from '@/lib/videos'
+import { readUploadDatabase, writeUploadDatabase, readVideosJson, writeVideosJson } from '@/lib/videos'
 
 function todayStr() {
   const d = new Date()
@@ -64,8 +64,21 @@ export async function PATCH(req: NextRequest) {
     const db = readUploadDatabase()
     const video = db.find(v => v.id === id)
     if (!video) return NextResponse.json({ error: 'Video not found' }, { status: 404 })
+    
     video.skip = skip
     writeUploadDatabase(db)
+
+    // Sync the skip state to edit-video/videos.json so the Render step also skips it
+    if (video.title) {
+      const videosJson = readVideosJson()
+      // Match using substring since prepare-upload truncates to 100 chars
+      const targetVideo = videosJson.find(v => v.title.substring(0, 100) === video.title)
+      if (targetVideo) {
+        targetVideo.skip = skip
+        writeVideosJson(videosJson)
+      }
+    }
+
     return NextResponse.json({ ok: true })
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
