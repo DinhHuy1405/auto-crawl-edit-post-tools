@@ -285,20 +285,37 @@ export class PostReelsFacebookCommand extends CommandRunner {
     
     await page.waitForTimeout(2000);
 
-    // Step 3: Click second Next button (after format/trim options)
+    // Step 3: Wait for copyright check to finish, then click Next
+    console.log('Step 3: Waiting for copyright check to complete...');
+    try {
+      // Wait for "Checking for copyrighted content" text to disappear (up to 60s)
+      await page.waitForFunction(
+        () => !document.body.innerText.includes('Checking for copyrighted content'),
+        { timeout: 60000 }
+      );
+      console.log('✅ Copyright check done');
+    } catch (e) {
+      console.log('Copyright check timeout, proceeding anyway...');
+    }
+    await page.waitForTimeout(1000);
+
     console.log('Step 3: Waiting for second Next button...');
     const nextButton2 = page.locator('div[aria-label="Next"][role="button"]');
     const nextCountStep3 = await nextButton2.count();
     console.log(`Found ${nextCountStep3} Next buttons`);
-    
+
     if (nextCountStep3 >= 2) {
       await nextButton2.nth(1).waitFor({ state: 'visible', timeout: 30000 });
       await nextButton2.nth(1).click();
       console.log('✅ Clicked second Next');
+    } else if (nextCountStep3 === 1) {
+      await nextButton2.first().waitFor({ state: 'visible', timeout: 30000 });
+      await nextButton2.first().click();
+      console.log('✅ Clicked Next (single button)');
     } else {
-      console.warn('Expected 2 Next buttons but found less, proceeding anyway...');
+      console.warn('No Next button found, proceeding anyway...');
     }
-    
+
     await page.waitForTimeout(2000);
 
     // Step 4: Fill description

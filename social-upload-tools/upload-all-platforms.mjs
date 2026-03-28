@@ -16,12 +16,15 @@ const __dirname = path.dirname(__filename);
 console.log('\n🚀 Social Media Batch Upload Tool');
 console.log('====================================\n');
 
-// Parse command line arguments
+// Parse command line arguments: platforms + optional --date YYYY-MM-DD
 const args = process.argv.slice(2);
-const platforms = args.length > 0 ? args : ['tiktok', 'threads', 'facebook'];
+const _dateIdx = args.indexOf('--date');
+const dateArg = _dateIdx !== -1 ? args[_dateIdx + 1] : null;
+const platformArgs = args.filter((a, i) => a !== '--date' && i !== _dateIdx + 1);
 
 const validPlatforms = ['tiktok', 'threads', 'facebook'];
-const platformsToRun = platforms.filter(p => validPlatforms.includes(p.toLowerCase()));
+const platformsToRun = (platformArgs.length > 0 ? platformArgs : validPlatforms)
+  .filter(p => validPlatforms.includes(p.toLowerCase()));
 
 if (platformsToRun.length === 0) {
   console.error('❌ Invalid platforms. Use: upload-all-platforms.mjs [tiktok] [threads] [facebook]');
@@ -51,7 +54,8 @@ async function runUploads() {
         continue;
       }
 
-      const result = execSync(`node ${scriptPath}`, {
+      const dateFlag = dateArg ? ` --date ${dateArg}` : '';
+      const result = execSync(`node ${scriptPath}${dateFlag}`, {
         stdio: 'inherit',
         timeout: 1800000, // 30 minutes max per platform
       });

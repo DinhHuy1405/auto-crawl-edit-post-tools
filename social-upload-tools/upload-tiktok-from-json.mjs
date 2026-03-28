@@ -39,7 +39,7 @@ function generateTiktokVideoId(sequenceNumber) {
 // Hàm tạo file setting cho TikTok upload
 function createTiktokSetting(videoPath, description, outputPath) {
     const setting = {
-        "show_browser": true,
+        "show_browser": CONFIG.settings?.show_browser ?? true,
         "is_close_browser": true,
         "video_path": videoPath,
         "description": description,
@@ -119,7 +119,7 @@ async function uploadBatchToTiktok(specificVideoId = null) {
         console.log('=========================================================');
         
         // Load videos cần upload TikTok
-        let videosToUpload = getVideosForTiktok();
+        let videosToUpload = getVideosForTiktok(uploadDate);
         
         // Nếu có specificVideoId, chỉ upload video đó
         if (specificVideoId) {
@@ -208,8 +208,11 @@ async function uploadBatchToTiktok(specificVideoId = null) {
     }
 }
 
-// Chạy script với tham số video ID nếu có
-const specificVideoId = process.argv[2]; // node script.mjs video_id
+// Parse args: --date YYYY-MM-DD
+const _ttArgs = process.argv.slice(2);
+const _ttDateIdx = _ttArgs.indexOf('--date');
+const uploadDate = _ttDateIdx !== -1 ? _ttArgs[_ttDateIdx + 1] : null;
+const specificVideoId = _ttArgs.find(a => !a.startsWith('--') && a !== (_ttDateIdx !== -1 ? _ttArgs[_ttDateIdx + 1] : null)) ?? null;
 
 console.log('🎬 TikTok Upload from JSON Database');
 console.log('===================================');

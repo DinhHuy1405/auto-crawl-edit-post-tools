@@ -26,7 +26,7 @@ import {
 // Hàm tạo file setting cho Facebook upload
 function createFacebookSetting(videoPath, description, page, outputPath, profileId = null) {
     const setting = {
-        show_browser: true,
+        show_browser: CONFIG.settings?.show_browser ?? true,
         is_close_browser: true,
         video_path: videoPath,
         description: description
@@ -130,7 +130,7 @@ async function uploadBatchToFacebook(specificVideoId = null) {
         console.log('=======================================================');
         
         // Load videos cần upload Facebook
-        let videosToUpload = getVideosForFacebook();
+        let videosToUpload = getVideosForFacebook(uploadDate);
         
         // Nếu có specificVideoId, chỉ upload video đó
         if (specificVideoId) {
@@ -217,8 +217,11 @@ async function uploadBatchToFacebook(specificVideoId = null) {
     }
 }
 
-// Chạy script với tham số video ID nếu có
-const specificVideoId = process.argv[2]; // node script.mjs video_id
+// Parse args: --date YYYY-MM-DD
+const _fbArgs = process.argv.slice(2);
+const _fbDateIdx = _fbArgs.indexOf('--date');
+const uploadDate = _fbDateIdx !== -1 ? _fbArgs[_fbDateIdx + 1] : null;
+const specificVideoId = _fbArgs.find(a => !a.startsWith('--') && a !== (_fbDateIdx !== -1 ? _fbArgs[_fbDateIdx + 1] : null)) ?? null;
 
 console.log('📘 Facebook Upload from JSON Database');
 console.log('=====================================');

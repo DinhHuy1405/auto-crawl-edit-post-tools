@@ -57,29 +57,28 @@ function todayStr() {
 }
 
 /**
- * Check if a video was created/scheduled today
+ * Check if a video matches a given date (YYYY-MM-DD).
+ * If date is null, all videos match (no date filter).
  */
-function isToday(video) {
-  const today = todayStr();
-  // upload_date is set by prepare-upload.mjs
-  if (video.upload_date) return video.upload_date === today;
-  // Fallback: check created_at date portion
-  if (video.created_at) return video.created_at.startsWith(today);
+function matchesDate(video, date) {
+  if (!date) return true;
+  if (video.upload_date) return video.upload_date === date;
+  if (video.created_at) return video.created_at.startsWith(date);
   return false;
 }
 
 /**
  * Get videos ready for Facebook upload
- * Condition: status = "ready" AND facebook.uploaded = false AND file exists AND created today AND not skipped
+ * @param {string|null} date - YYYY-MM-DD to filter by, or null for all
  */
-export function getVideosForFacebook() {
+export function getVideosForFacebook(date = null) {
   const db = loadDatabase();
   if (!db || db.length === 0) return [];
 
   return db.filter((video) => {
     if (video.status !== 'ready') return false;
     if (video.skip === true) return false;
-    if (!isToday(video)) return false;
+    if (!matchesDate(video, date)) return false;
     if (video.facebook?.uploaded === true) return false;
     if (!video.file_path || !fs.existsSync(video.file_path)) return false;
     return true;
@@ -88,16 +87,16 @@ export function getVideosForFacebook() {
 
 /**
  * Get videos ready for TikTok upload
- * Condition: status = "ready" AND tiktok.uploaded = false AND file exists AND created today AND not skipped
+ * @param {string|null} date - YYYY-MM-DD to filter by, or null for all
  */
-export function getVideosForTiktok() {
+export function getVideosForTiktok(date = null) {
   const db = loadDatabase();
   if (!db || db.length === 0) return [];
 
   return db.filter((video) => {
     if (video.status !== 'ready') return false;
     if (video.skip === true) return false;
-    if (!isToday(video)) return false;
+    if (!matchesDate(video, date)) return false;
     if (video.tiktok?.uploaded === true) return false;
     if (!video.file_path || !fs.existsSync(video.file_path)) return false;
     return true;
@@ -106,16 +105,16 @@ export function getVideosForTiktok() {
 
 /**
  * Get videos ready for Threads upload
- * Condition: status = "ready" AND threads.uploaded = false AND file exists AND created today AND not skipped
+ * @param {string|null} date - YYYY-MM-DD to filter by, or null for all
  */
-export function getVideosForThreads() {
+export function getVideosForThreads(date = null) {
   const db = loadDatabase();
   if (!db || db.length === 0) return [];
 
   return db.filter((video) => {
     if (video.status !== 'ready') return false;
     if (video.skip === true) return false;
-    if (!isToday(video)) return false;
+    if (!matchesDate(video, date)) return false;
     if (video.threads?.uploaded === true) return false;
 
     // Allow text-only posts (no video file check needed)

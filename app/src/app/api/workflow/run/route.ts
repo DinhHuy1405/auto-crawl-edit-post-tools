@@ -20,7 +20,7 @@ const runningProcesses = new Map<string, ReturnType<typeof spawn>>()
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
-  const { step, runId, force } = await req.json()
+  const { step, runId, force, date } = await req.json()
 
   // Prefer project venv python if present (keeps same environment as run-workflow.mjs)
   const venvPython = path.join(ROOT_DIR, '.venv', 'bin', 'python3')
@@ -65,9 +65,9 @@ export async function POST(req: NextRequest) {
     },
     upload: {
       cmd: 'node',
-      args: ['upload-all-platforms.mjs', ...getUploadPlatforms()],
+      args: ['upload-all-platforms.mjs', ...getUploadPlatforms(), ...(date ? ['--date', date] : [])],
       cwd: path.join(ROOT_DIR, 'social-upload-tools'),
-      label: '📤 Uploading to platforms...',
+      label: date ? `📤 Uploading videos for ${date}...` : '📤 Uploading to platforms...',
     },
     full: {
       cmd: 'node',

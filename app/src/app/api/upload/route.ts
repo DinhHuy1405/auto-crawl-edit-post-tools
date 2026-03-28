@@ -1,39 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readUploadDatabase, writeUploadDatabase, readVideosJson, writeVideosJson } from '@/lib/videos'
+import { PATHS } from '@/lib/config'
+import fs from 'fs'
+
+function readSocialConfig() {
+  try { return JSON.parse(fs.readFileSync(PATHS.socialConfig, 'utf8')) } catch { return {} }
+}
+function writeSocialConfig(data: Record<string, unknown>) {
+  fs.writeFileSync(PATHS.socialConfig, JSON.stringify(data, null, 2), 'utf8')
+}
 
 function todayStr() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function isToday(v: { upload_date?: string; created_at?: string }) {
-  const today = todayStr()
-  if (v.upload_date) return v.upload_date === today
-  if (v.created_at) return v.created_at.startsWith(today)
-  return false
-}
 
 export async function GET(req: NextRequest) {
   try {
     const db = readUploadDatabase()
-    const todayOnly = req.nextUrl.searchParams.get('today') === '1'
-    const videos = todayOnly ? db.filter(isToday) : db
     const today = todayStr()
-    const todayVideos = db.filter(isToday)
+    const dateParam = req.nextUrl.searchParams.get('date') || req.nextUrl.searchParams.get('today') === '1' && today || null
+    const matchDate = (v: { upload_date?: string; created_at?: string }) => {
+      if (!dateParam) return true
+      const ud = v.upload_date as string | undefined
+      const ca = v.created_at as string | undefined
+      return ud ? ud === dateParam : (ca ? ca.startsWith(dateParam) : false)
+    }
+    const pendingVideos = db.filter(v => !v.skip && v.status === 'ready' && (!v.threads?.uploaded || !v.tiktok?.uploaded || !v.facebook?.uploaded))
+    const filteredVideos = dateParam ? pendingVideos.filter(matchDate) : pendingVideos
+    const videos = dateParam !== null ? filteredVideos : db
     const stats = {
       total: db.length,
-      today_total: todayVideos.length,
-      today_pending: todayVideos.filter(v => !v.skip && v.status === 'ready' && (!v.threads?.uploaded || !v.tiktok?.uploaded || !v.facebook?.uploaded)).length,
+      today_total: filteredVideos.length,
+      today_pending: filteredVideos.length,
       ready: db.filter(v => v.status === 'ready').length,
       facebook_uploaded: db.filter(v => v.facebook?.uploaded).length,
       tiktok_uploaded: db.filter(v => v.tiktok?.uploaded).length,
       threads_uploaded: db.filter(v => v.threads?.uploaded).length,
-      facebook_pending: todayVideos.filter(v => !v.skip && !v.facebook?.uploaded && v.status === 'ready').length,
-      tiktok_pending: todayVideos.filter(v => !v.skip && !v.tiktok?.uploaded && v.status === 'ready').length,
-      threads_pending: todayVideos.filter(v => !v.skip && !v.threads?.uploaded && v.status === 'ready').length,
+      facebook_pending: filteredVideos.filter(v => !v.facebook?.uploaded).length,
+      tiktok_pending: filteredVideos.filter(v => !v.tiktok?.uploaded).length,
+      threads_pending: filteredVideos.filter(v => !v.threads?.uploaded).length,
       today,
     }
-    return NextResponse.json({ videos, stats })
+    const showBrowser: boolean = readSocialConfig()?.settings?.show_browser ?? true
+    return NextResponse.json({ videos, stats, showBrowser })
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
@@ -51,6 +62,19 @@ export async function PUT(req: NextRequest) {
       ...data,
     }
     writeUploadDatabase(db)
+    return NextResponse.json({ ok: true })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  // Toggle show_browser in social-upload-tools/config.json
+  try {
+    const { showBrowser } = await req.json()
+    const cfg = readSocialConfig()
+    cfg.settings = { ...cfg.settings, show_browser: showBrowser }
+    writeSocialConfig(cfg)
     return NextResponse.json({ ok: true })
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 })

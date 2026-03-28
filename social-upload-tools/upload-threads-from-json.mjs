@@ -20,12 +20,17 @@ import {
     updateThreadsStatus 
 } from './video-database.mjs';
 
+// Parse args: --date YYYY-MM-DD
+const _thArgs = process.argv.slice(2);
+const _thDateIdx = _thArgs.indexOf('--date');
+const uploadDate = _thDateIdx !== -1 ? _thArgs[_thDateIdx + 1] : null;
+
 try {
   console.log('📱 Loading Threads configuration...');
   const database = loadDatabase();
 
   // Find videos that are ready to post to Threads
-  const videosToPost = getVideosForThreads();
+  const videosToPost = getVideosForThreads(uploadDate);
 
   if (videosToPost.length === 0) {
     console.log('✅ No videos ready for Threads upload');

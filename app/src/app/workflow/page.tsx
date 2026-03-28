@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import {
   Play, Square, RotateCcw, FastForward,
   Loader2, Plus, Link as LinkIcon,
-  Pencil, Trash2, Check, X, Video, EyeOff,
+  Pencil, Trash2, Check, X, Video, EyeOff, Monitor, MonitorOff,
 } from 'lucide-react'
 import {
   TikTokIcon, FacebookIcon, ThreadsIcon, YouTubeIcon,
@@ -161,6 +161,11 @@ export default function WorkflowPage() {
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
   const [configLoaded, setConfigLoaded] = useState(false)
   const [uploadQueue, setUploadQueue] = useState<UploadQueueVideo[]>([])
+  const [showBrowser, setShowBrowser] = useState(true)
+  const [uploadDate, setUploadDate] = useState<string>(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  })
 
   const logScrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -179,12 +184,19 @@ export default function WorkflowPage() {
   }, [])
 
   const fetchUploadQueue = useCallback(() => {
-    fetch('/api/upload?today=1').then(r => r.json()).then(data => {
+    fetch(`/api/upload?date=${uploadDate}`).then(r => r.json()).then(data => {
       if (Array.isArray(data.videos)) setUploadQueue(data.videos)
+      if (typeof data.showBrowser === 'boolean') setShowBrowser(data.showBrowser)
     }).catch(() => {})
-  }, [])
+  }, [uploadDate])
 
   useEffect(() => { fetchUploadQueue() }, [fetchUploadQueue])
+
+  const toggleShowBrowser = useCallback(async () => {
+    const next = !showBrowser
+    setShowBrowser(next)
+    await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showBrowser: next }) })
+  }, [showBrowser])
 
   const toggleSkipVideo = useCallback(async (id: string, skip: boolean) => {
     await fetch('/api/upload', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, skip }) })
@@ -250,7 +262,7 @@ export default function WorkflowPage() {
       abortRef.current = ctrl
       const res = await fetch('/api/workflow/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step: stepId, runId, force }), signal: ctrl.signal,
+        body: JSON.stringify({ step: stepId, runId, force, ...(stepId === 'upload' ? { date: uploadDate } : {}) }), signal: ctrl.signal,
       })
       if (!res.ok || !res.body) { updStep(stepId, 'error'); return false }
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''; let ok = false
@@ -413,7 +425,21 @@ export default function WorkflowPage() {
               <ThreadsIcon size={13} className="text-slate-700" />
             </div>
             <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Upload Platforms</p>
-            <span className="ml-auto text-[10px] text-slate-400">{platforms.length} selected</span>
+            <button
+              onClick={toggleShowBrowser}
+              disabled={isRunning}
+              title={showBrowser ? 'Browser đang hiện — click để ẩn' : 'Browser đang ẩn — click để hiện'}
+              className={cn(
+                'ml-auto flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium border transition-colors',
+                showBrowser
+                  ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  : 'border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100',
+                isRunning && 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              {showBrowser ? <Monitor className="w-3 h-3" /> : <MonitorOff className="w-3 h-3" />}
+              {showBrowser ? 'Browser: ON' : 'Browser: OFF'}
+            </button>
           </div>
           <div className="p-3">
             <div className="flex gap-2 mb-2.5">
@@ -449,11 +475,17 @@ export default function WorkflowPage() {
       </div>
 
       {/* Upload Video Queue */}
-      {uploadQueue.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
             <Video className="w-4 h-4 text-slate-400" />
-            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Videos sẽ upload hôm nay</p>
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Upload Queue</p>
+            <input
+              type="date"
+              value={uploadDate}
+              onChange={e => setUploadDate(e.target.value)}
+              disabled={isRunning}
+              className="ml-2 px-2 py-0.5 text-[11px] border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50"
+            />
             <span className="ml-auto text-[10px] text-slate-400">
               {uploadQueue.filter(v => !v.skip).length}/{uploadQueue.length} video
             </span>
@@ -488,8 +520,10 @@ export default function WorkflowPage() {
               </div>
             ))}
           </div>
+          {uploadQueue.length === 0 && (
+            <p className="px-4 py-4 text-[11px] text-slate-400 text-center">Không có video nào cần upload cho ngày {uploadDate}</p>
+          )}
         </div>
-      )}
 
       {/* System Pipeline — horizontal */}
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm px-8 py-5">

@@ -30,24 +30,24 @@
     "logo": "logo.png"
   },
   "layout": {
-    "templateY": 470,
-    "logoX": 89,
-    "logoY": 198,
-    "logoW": 211,
-    "logoH": 185,
-    "titleY": 1469,
-    "templateX": 17,
-    "logoScale": "211:185",
+    "templateY": 431,
+    "logoX": 72,
+    "logoY": 187,
+    "logoW": 222,
+    "logoH": 196,
+    "titleY": 1591,
+    "templateX": -305,
+    "logoScale": "222:196",
     "subtitleY": 800,
     "subtitleSize": 42,
     "subtitleColor": "#FFFFFF",
     "subtitleOutline": "#000000",
     "titleDuration": 89,
-    "templateW": 1440,
+    "templateW": 2027,
     "templateH": -1,
     "titleW": 1113,
     "titleH": 300,
-    "titleX": 232,
+    "titleX": 182,
     "mainVideoSkip": 180
   },
   "presets": [
@@ -113,7 +113,7 @@
       "skipSec": 180
     },
     "randomClips": {
-      "minClipSec": 8,
+      "minClipSec": 10,
       "maxClipSec": 20,
       "avoidFirstSec": 360,
       "avoidLastSec": 30,
@@ -189,7 +189,6 @@
   "upload": {
     "platforms": [
       "facebook",
-      "tiktok",
       "threads"
     ],
     "showBrowser": true,
@@ -208,28 +207,28 @@
     {
       "id": "tl",
       "label": "Top-Left",
-      "x": 22,
-      "y": 14,
-      "w": 210,
+      "x": 315,
+      "y": 20,
+      "w": 243,
       "h": 210,
       "sigma": 30
     },
     {
       "id": "tr",
       "label": "Top-Right",
-      "x": 1102,
-      "y": 25,
-      "w": 350,
-      "h": 180,
+      "x": 1467,
+      "y": 14,
+      "w": 284,
+      "h": 213,
       "sigma": 30
     },
     {
       "id": "bt",
       "label": "Bottom-Ctr",
-      "x": 470,
-      "y": 708,
-      "w": 600,
-      "h": 80,
+      "x": 680,
+      "y": 996,
+      "w": 666,
+      "h": 108,
       "sigma": 30
     }
   ]
