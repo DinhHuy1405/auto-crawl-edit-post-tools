@@ -925,6 +925,38 @@ export default function EditorPage() {
   const [activePresetId,setActivePresetId]=useState<string>('standard')
   const [mediaSearch,setMediaSearch]=useState('')
 
+  // ── Workflow mode ─────────────────────────────────────────────────────────
+  const [workflowMode,setWorkflowMode]=useState<'news'|'clip'|'ai'>('news')
+
+  // ── AI Generative Outfit: 2-Phase Flow ────────────────────────────────────
+  const [aiOutfitPhase, setAiOutfitPhase]=useState<'idle'|'extracting'|'generating'|'done'>('idle')
+  const [aiSourceImagePath, setAiSourceImagePath]=useState<string>('')  // original outfit+bg
+  const [aiExtractedOutfitPath, setAiExtractedOutfitPath]=useState<string>('')  // cleaned PNG
+  const [aiBackgroundImagePath, setAiBackgroundImagePath]=useState<string>('')
+  const [aiAnglePrompts, setAiAnglePrompts]=useState<string[]>([
+    'Full body, standing, side view facing right',
+    'Close-up upper body, front view',
+    'Full body, back view',
+    'Frontal face shot, upper torso',
+    'Walking pose, 3/4 angle'
+  ])
+  const [aiAngleInput, setAiAngleInput]=useState('')
+  const [aiExtractedPreview, setAiExtractedPreview]=useState<string|null>(null)
+  const [aiGeneratedImages, setAiGeneratedImages]=useState<{id:string, path:string, angle:string, timestamp:number}[]>([])
+  const [aiCurrentAngleIndex, setAiCurrentAngleIndex]=useState(0)
+  const [aiGenerationRunning, setAiGenerationRunning]=useState(false)
+  const [aiExtractionRunning, setAiExtractionRunning]=useState(false)
+  const [aiAspectRatio, setAiAspectRatio]=useState<'9:16'|'16:9'|'1:1'>('9:16')
+  const [aiMaxAttempts, setAiMaxAttempts]=useState(1)
+  const [aiEnhancePrompts, setAiEnhancePrompts]=useState(false)
+  const [aiStyleHint, setAiStyleHint]=useState('professional product photography')
+  const [aiRunId, setAiRunId]=useState(`run_${Date.now()}`)
+
+  // Clip mode state
+  const [clipAddFrame,setClipAddFrame]=useState(false)
+  const [clipAddLogo,setClipAddLogo]=useState(false)
+  const [clipSplitCount,setClipSplitCount]=useState(3)
+
   useEffect(()=>{
     fetch('/api/config').then(r=>r.json()).then((c:Record<string,unknown>)=>{
       setConfig(c)
@@ -1077,6 +1109,18 @@ export default function EditorPage() {
         </div>
         <div className="w-px h-4 bg-slate-200"/>
 
+        {/* Workflow Mode Selector */}
+        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+          {([{id:'news' as const,label:'📰 News'},{id:'clip' as const,label:'✂️ Clip'},{id:'ai' as const,label:'✨ AI'}]).map(m=>(
+            <button key={m.id} onClick={()=>setWorkflowMode(m.id)}
+              className={cn('px-2.5 py-0.5 rounded-md text-[10px] font-bold transition-all',
+                workflowMode===m.id?'bg-white text-slate-800 shadow-sm':'text-slate-400 hover:text-slate-600')}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="w-px h-4 bg-slate-200"/>
+
         {/* Floating toolbar pill for canvas controls */}
         <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-slate-100 border border-slate-200 shadow-sm text-[10px]">
           <button onClick={()=>setZoom(z=>Math.max(0.4,z-0.15))} className="text-slate-400 hover:text-slate-700 p-0.5"><ZoomOut className="w-3 h-3"/></button>
@@ -1146,20 +1190,94 @@ export default function EditorPage() {
 
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {leftTab==='media' && (<>
-                {filteredVideos.length===0 ? (
-                  <div className="flex flex-col items-center justify-center h-24 text-center rounded-xl border-2 border-dashed border-slate-200 p-4">
-                    <Film className="w-6 h-6 text-slate-300 mb-1.5"/>
-                    <p className="text-[10px] text-slate-400">{mediaSearch ? 'No results' : 'No source videos'}</p>
-                  </div>
-                ) : filteredVideos.map(v=>(
-                  <button key={v.id} onClick={()=>setSelectedVideo(v)}
-                    className={cn('w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-xl transition-all border',selectedVideo?.id===v.id?'border-blue-200 bg-blue-50 text-blue-700':'border-transparent hover:bg-slate-50 text-slate-600')}>
-                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center shrink-0',selectedVideo?.id===v.id?'bg-blue-100':'bg-slate-100')}>
-                      <Film className="w-3.5 h-3.5"/>
+                {workflowMode==='ai' ? (
+                  /* AI mode: Generative outfit manager */
+                  <div className="space-y-3">
+                    <p className="text-[9px] text-slate-400 px-1">Generative Outfit Composition</p>
+
+                    {/* Source Image */}
+                    <div>
+                      <label className="text-[9px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Source Outfit</label>
+                      <button onClick={()=>document.getElementById('media-source-upload')?.click()}
+                        className={cn('w-full px-2 py-1.5 rounded-lg border-2 border-dashed text-center text-[9px] transition-all',
+                          aiSourceImagePath?'border-purple-200 bg-purple-50':'border-slate-200 bg-white hover:border-purple-300')}>
+                        {aiSourceImagePath ? (
+                          <div><p className="font-bold text-purple-700">{aiSourceImagePath.split('/').pop()}</p><p className="text-purple-500 text-[8px]">Click to change</p></div>
+                        ) : (
+                          'Click to upload'
+                        )}
+                      </button>
+                      <input id="media-source-upload" type="file" className="hidden" accept="image/*"
+                        onChange={e=>{const f=e.target.files?.[0];if(f)setAiSourceImagePath(f.name)}}/>
                     </div>
-                    <span className="text-[10px] font-medium truncate">{v.title}</span>
-                  </button>
-                ))}
+
+                    {/* Background Image */}
+                    <div>
+                      <label className="text-[9px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Background</label>
+                      <button onClick={()=>document.getElementById('media-bg-upload')?.click()}
+                        className={cn('w-full px-2 py-1.5 rounded-lg border-2 border-dashed text-center text-[9px] transition-all',
+                          aiBackgroundImagePath?'border-purple-200 bg-purple-50':'border-slate-200 bg-white hover:border-purple-300')}>
+                        {aiBackgroundImagePath ? (
+                          <div><p className="font-bold text-purple-700">{aiBackgroundImagePath.split('/').pop()}</p><p className="text-purple-500 text-[8px]">Click to change</p></div>
+                        ) : (
+                          'Click to upload'
+                        )}
+                      </button>
+                      <input id="media-bg-upload" type="file" className="hidden" accept="image/*"
+                        onChange={e=>{const f=e.target.files?.[0];if(f)setAiBackgroundImagePath(f.name)}}/>
+                    </div>
+
+                    {/* Settings */}
+                    <div>
+                      <label className="text-[9px] font-bold text-slate-600 uppercase tracking-widest block mb-1">Settings</label>
+                      <div className="space-y-1.5 px-2 py-1.5 bg-slate-50 rounded-lg border border-slate-200">
+                        <div>
+                          <p className="text-[8px] text-slate-500 mb-0.5">Aspect Ratio</p>
+                          <select value={aiAspectRatio} onChange={e=>setAiAspectRatio(e.target.value as any)}
+                            className="w-full text-[9px] px-1.5 py-1 rounded-md border border-slate-200 bg-white">
+                            <option value="9:16">9:16 (TikTok)</option>
+                            <option value="16:9">16:9 (YouTube)</option>
+                            <option value="1:1">1:1 (Instagram)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <p className="text-[8px] text-slate-500">Max Attempts</p>
+                            <span className="text-[9px] font-bold text-slate-700">{aiMaxAttempts}</span>
+                          </div>
+                          <input type="range" min={1} max={3} value={aiMaxAttempts} onChange={e=>setAiMaxAttempts(+e.target.value)}
+                            className="w-full h-1 bg-slate-200 rounded-full"/>
+                        </div>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input type="checkbox" checked={aiEnhancePrompts} onChange={e=>setAiEnhancePrompts(e.target.checked)}
+                            className="w-3 h-3 rounded"/>
+                          <span className="text-[8px] text-slate-600">Auto-enhance prompts</span>
+                        </label>
+                        <input value={aiStyleHint} onChange={e=>setAiStyleHint(e.target.value)}
+                          placeholder="Style hint..."
+                          className="w-full text-[8px] px-1.5 py-1 rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-purple-400"/>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* News/Clip mode: video files */
+                  <>
+                    {filteredVideos.length===0 ? (
+                      <div className="flex flex-col items-center justify-center h-24 text-center rounded-xl border-2 border-dashed border-slate-200 p-4">
+                        <Film className="w-6 h-6 text-slate-300 mb-1.5"/>
+                        <p className="text-[10px] text-slate-400">{mediaSearch ? 'No results' : 'No source videos'}</p>
+                      </div>
+                    ) : filteredVideos.map(v=>(
+                      <button key={v.id} onClick={()=>setSelectedVideo(v)}
+                        className={cn('w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-xl transition-all border',selectedVideo?.id===v.id?'border-blue-200 bg-blue-50 text-blue-700':'border-transparent hover:bg-slate-50 text-slate-600')}>
+                        <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center shrink-0',selectedVideo?.id===v.id?'bg-blue-100':'bg-slate-100')}>
+                          <Film className="w-3.5 h-3.5"/>
+                        </div>
+                        <span className="text-[10px] font-medium truncate">{v.title}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
               </>)}
               {leftTab==='source' && <SourceModePanel config={sourceMode} onChange={setSourceMode}/>}
               {leftTab==='audio' && (
@@ -1289,7 +1407,252 @@ export default function EditorPage() {
           </div>
         </div>
 
-        {/* ── CENTER: Canvas ────────────────────────────────────────────────── */}
+        {/* ── CENTER: Canvas (news/clip) or Slideshow (ai) ──────────────────── */}
+        {workflowMode==='ai' ? (
+          /* ── AI GENERATIVE OUTFIT: 2-Phase (Extract + Compose) ─────────── */
+          <div className="flex-1 flex flex-col overflow-hidden" style={{background:'#e2e8f0'}}>
+            {/* Phase Indicator Bar */}
+            <div className="shrink-0 flex items-center gap-3 px-4 py-2 bg-white border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                {(['extract','compose','results'] as const).map((p, idx)=>(
+                  <div key={p} className="flex items-center gap-2">
+                    <div className={cn('w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold',
+                      (p==='extract' && (aiOutfitPhase==='extracting' || aiOutfitPhase==='generating' || aiOutfitPhase==='done')) ||
+                      (p==='compose' && (aiOutfitPhase==='generating' || aiOutfitPhase==='done')) ||
+                      (p==='results' && aiOutfitPhase==='done')
+                        ? 'bg-purple-500 text-white' : 'bg-slate-200 text-slate-500'
+                    )}>
+                      {p==='extract' ? '1' : p==='compose' ? '2' : '3'}
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-600 capitalize">{p}</span>
+                    {idx < 2 && <div className="w-6 h-px bg-slate-300 mx-1"/>}
+                  </div>
+                ))}
+              </div>
+              <div className="flex-1"/>
+              {aiOutfitPhase!=='idle' && (
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span className="text-slate-500">Phase: <span className="font-bold capitalize">{aiOutfitPhase}</span></span>
+                  {(aiExtractionRunning || aiGenerationRunning) && <Loader2 className="w-3 h-3 animate-spin text-purple-500"/>}
+                </div>
+              )}
+            </div>
+
+            {/* Canvas Area */}
+            <div className="flex-1 overflow-auto flex items-center justify-center p-6" style={{background:'#f1f5f9'}}>
+              {aiOutfitPhase==='idle' || !aiExtractedOutfitPath ? (
+                /* PHASE 1: EXTRACTION */
+                <div className="max-w-md w-full space-y-4">
+                  <div className="text-center mb-4">
+                    <h2 className="text-2xl font-black text-slate-900 mb-1">Step 1: Extract Outfit</h2>
+                    <p className="text-sm text-slate-500">Upload outfit image with background, we'll extract it cleanly</p>
+                  </div>
+
+                  {/* Source Image Upload */}
+                  <div className="relative">
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-widest mb-2">Outfit Image</label>
+                    <div className="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center bg-white/70 hover:bg-slate-50 transition-colors cursor-pointer group"
+                      onClick={()=>document.getElementById('ai-source-upload')?.click()}>
+                      {aiSourceImagePath ? (
+                        <div className="space-y-2">
+                          <ImageIcon className="w-8 h-8 text-purple-500 mx-auto"/>
+                          <p className="text-[10px] font-bold text-slate-700">{aiSourceImagePath.split('/').pop()}</p>
+                          <p className="text-[9px] text-slate-400">Click to change</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 group-hover:opacity-70 transition-opacity">
+                          <ImageIcon className="w-10 h-10 text-slate-400 mx-auto"/>
+                          <p className="text-[11px] font-bold text-slate-600">Click or drag image</p>
+                          <p className="text-[9px] text-slate-400">PNG, JPG supported</p>
+                        </div>
+                      )}
+                    </div>
+                    <input id="ai-source-upload" type="file" className="hidden" accept="image/*"
+                      onChange={e=>{const f=e.target.files?.[0];if(f)setAiSourceImagePath(f.name)}}/>
+                  </div>
+
+                  {/* Extract Button */}
+                  <button onClick={async()=>{
+                    if(!aiSourceImagePath)return toast.error('Upload outfit image first')
+                    setAiExtractionRunning(true)
+                    setAiOutfitPhase('extracting')
+                    try{
+                      const res=await fetch('/api/ai/generative-outfit/extract',{
+                        method:'POST',
+                        headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({sourceImagePath:aiSourceImagePath, runId:aiRunId})
+                      })
+                      if(!res.body)throw new Error('No response')
+                      const reader=res.body.getReader(),dec=new TextDecoder()
+                      let buf=''
+                      while(true){
+                        const {done,value}=await reader.read();if(done)break
+                        buf+=dec.decode(value,{stream:true})
+                        const parts=buf.split('\n\n');buf=parts.pop()||''
+                        for(const part of parts){
+                          const line=part.replace(/^data: /,'').trim();if(!line)continue
+                          try{const ev=JSON.parse(line);
+                            if(ev.type==='extraction-done'){setAiExtractedOutfitPath(ev.imagePath);setAiExtractedPreview(URL.createObjectURL(new Blob([ev.data])))}
+                            if(ev.type==='done' && ev.success){setAiOutfitPhase('generating')}
+                          }catch{}
+                        }
+                      }
+                    }catch(err){toast.error('Extraction failed: '+String(err))}finally{setAiExtractionRunning(false)}
+                  }}
+                    disabled={!aiSourceImagePath || aiExtractionRunning}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-bold text-sm transition-all disabled:opacity-50">
+                    {aiExtractionRunning ? (<><Loader2 className="w-4 h-4 inline animate-spin mr-2"/>Extracting...</>) : 'Extract Outfit'}
+                  </button>
+                </div>
+              ) : (
+                /* PHASE 2: COMPOSITION */
+                <div className="w-full max-w-3xl space-y-4">
+                  <div className="text-center mb-4">
+                    <h2 className="text-2xl font-black text-slate-900 mb-1">Step 2: Generate Multi-Angle Composites</h2>
+                    <p className="text-sm text-slate-500">Upload background, set angle prompts, generate composites</p>
+                  </div>
+
+                  {/* 2-Column Layout */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Left: Background Upload */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2">Background Image</label>
+                      <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center bg-white/70 hover:bg-slate-50 transition-colors cursor-pointer"
+                        onClick={()=>document.getElementById('ai-bg-upload')?.click()}>
+                        {aiBackgroundImagePath ? (
+                          <div className="space-y-1">
+                            <ImageIcon className="w-6 h-6 text-purple-500 mx-auto"/>
+                            <p className="text-[9px] font-bold text-slate-700">{aiBackgroundImagePath.split('/').pop()}</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <ImageIcon className="w-8 h-8 text-slate-400 mx-auto"/>
+                            <p className="text-[10px] font-bold text-slate-600">Click upload</p>
+                          </div>
+                        )}
+                      </div>
+                      <input id="ai-bg-upload" type="file" className="hidden" accept="image/*"
+                        onChange={e=>{const f=e.target.files?.[0];if(f)setAiBackgroundImagePath(f.name)}}/>
+                    </div>
+
+                    {/* Right: Extracted Outfit Preview */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2">Extracted Outfit</label>
+                      <div className="border-2 border-slate-300 rounded-xl p-4 bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center h-24">
+                        {aiExtractedPreview ? (
+                          <img src={aiExtractedPreview} alt="outfit" className="max-h-20 object-contain"/>
+                        ) : (
+                          <p className="text-[9px] text-slate-400">Outfit preview</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Angle Prompts Manager */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2">Angle Prompts ({aiAnglePrompts.length})</label>
+                    <div className="space-y-1 max-h-32 overflow-y-auto mb-2">
+                      {aiAnglePrompts.map((prompt, idx)=>(
+                        <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-slate-200 group hover:border-purple-300">
+                          <span className="text-[10px] font-bold text-slate-400 w-5 text-center">{idx+1}</span>
+                          <span className="flex-1 text-[10px] text-slate-600 truncate">{prompt}</span>
+                          <button onClick={()=>setAiAnglePrompts(p=>p.filter((_,i)=>i!==idx))}
+                            className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                            <X className="w-3 h-3"/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-1">
+                      <input value={aiAngleInput} onChange={e=>setAiAngleInput(e.target.value)}
+                        onKeyDown={e=>{if(e.key==='Enter' && aiAngleInput.trim()){setAiAnglePrompts(p=>[...p, aiAngleInput.trim()]);setAiAngleInput('')}}}
+                        placeholder="Add new angle prompt..."
+                        className="flex-1 h-7 px-2 text-[10px] bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-400"/>
+                      <button onClick={()=>{if(aiAngleInput.trim()){setAiAnglePrompts(p=>[...p, aiAngleInput.trim()]);setAiAngleInput('')}}}
+                        className="w-7 h-7 rounded-lg bg-purple-500 hover:bg-purple-600 text-white flex items-center justify-center transition-colors">
+                        <Plus className="w-3 h-3"/>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Start Generation */}
+                  <button onClick={async()=>{
+                    if(!aiBackgroundImagePath || !aiExtractedOutfitPath || aiAnglePrompts.length===0)
+                      return toast.error('Complete setup: background + outfit + angle prompts')
+                    setAiGenerationRunning(true)
+                    setAiGeneratedImages([])
+                    try{
+                      const res=await fetch('/api/ai/generative-outfit/compose',{
+                        method:'POST',
+                        headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({
+                          backgroundImagePath:aiBackgroundImagePath,
+                          extractedOutfitPath:aiExtractedOutfitPath,
+                          anglePrompts:aiAnglePrompts,
+                          aspectRatio:aiAspectRatio,
+                          maxAttemptsPerAngle:aiMaxAttempts,
+                          enhancePrompts:aiEnhancePrompts,
+                          styleHint:aiStyleHint,
+                          runId:aiRunId
+                        })
+                      })
+                      if(!res.body)throw new Error('No response')
+                      const reader=res.body.getReader(),dec=new TextDecoder()
+                      let buf=''
+                      while(true){
+                        const {done,value}=await reader.read();if(done)break
+                        buf+=dec.decode(value,{stream:true})
+                        const parts=buf.split('\n\n');buf=parts.pop()||''
+                        for(const part of parts){
+                          const line=part.replace(/^data: /,'').trim();if(!line)continue
+                          try{const ev=JSON.parse(line);
+                            if(ev.type==='progress')setAiCurrentAngleIndex(ev.angleIndex)
+                            if(ev.type==='image-ready'){setAiGeneratedImages(p=>[...p,{id:`img_${Date.now()}_${ev.imageIndex}`,path:ev.imagePath,angle:ev.anglePrompt,timestamp:Date.now()}])}
+                            if(ev.type==='done'){if(ev.success){setAiOutfitPhase('done');toast.success('Generation complete!')}else{toast.error(ev.error)}}
+                          }catch{}
+                        }
+                      }
+                    }catch(err){toast.error('Generation failed: '+String(err))}finally{setAiGenerationRunning(false)}
+                  }}
+                    disabled={!aiBackgroundImagePath || !aiExtractedOutfitPath || aiAnglePrompts.length===0 || aiGenerationRunning}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-bold text-sm transition-all disabled:opacity-50">
+                    {aiGenerationRunning ? (
+                      <><Loader2 className="w-4 h-4 inline animate-spin mr-2"/>Generating {aiCurrentAngleIndex + 1}/{aiAnglePrompts.length}...</>
+                    ) : (
+                      'Start Generation'
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Generated Images Gallery (bottom section) */}
+            {aiGeneratedImages.length > 0 && (
+              <div className="shrink-0 max-h-40 bg-white border-t border-slate-200 p-3 overflow-y-auto">
+                <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mb-2">Generated Images ({aiGeneratedImages.length}/{aiAnglePrompts.length})</p>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {aiGeneratedImages.map((img, idx)=>(
+                    <div key={img.id} className="shrink-0 flex flex-col items-center gap-1">
+                      <div className="w-16 h-28 rounded-lg overflow-hidden border border-slate-300 bg-slate-100 flex items-center justify-center group relative">
+                        {img.path ? (
+                          <img src={`/api/file?path=${encodeURIComponent(img.path)}`} alt="" className="w-full h-full object-cover"/>
+                        ) : (
+                          <Loader2 className="w-4 h-4 animate-spin text-slate-400"/>
+                        )}
+                        <button onClick={()=>setAiGeneratedImages(p=>p.filter(it=>it.id!==img.id))}
+                          className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white items-center justify-center hidden group-hover:flex transition-all">
+                          <X className="w-2.5 h-2.5"/>
+                        </button>
+                      </div>
+                      <span className="text-[8px] text-slate-500 text-center truncate w-16">{(idx+1).toString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+        /* ── CANVAS (news / clip) ────────────────────────────────────────── */
         <div className="flex-1 flex flex-col overflow-hidden" style={{background:'#e2e8f0'}}>
           <div className="flex-1 overflow-auto flex items-start justify-center p-5">
             <div className="flex flex-col items-center gap-2">
@@ -1354,235 +1717,443 @@ export default function EditorPage() {
             </div>
           </div>
         </div>
+        )} {/* end canvas / ai ternary */}
 
         {/* ── RIGHT: Properties + Layers ───────────────────────────────────── */}
         <div className="w-64 shrink-0 flex flex-col overflow-hidden bg-white border-l border-slate-200">
           {/* Tab switcher */}
           <div className="flex border-b border-slate-200 shrink-0">
-            {[{id:'properties' as const,label:'PROPERTIES'},{id:'layers' as const,label:'LAYERS'}].map(t=>(
-              <button key={t.id} onClick={()=>setRightTab(t.id)}
-                className={cn('flex-1 py-2.5 text-[10px] font-bold uppercase tracking-wide border-b-2 transition-colors',rightTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-slate-400 hover:text-slate-600')}>
-                {t.label}
-              </button>
-            ))}
+            {workflowMode==='ai' ? (
+              [{id:'properties' as const,label:'SLIDESHOW'},{id:'layers' as const,label:'FX'}].map(t=>(
+                <button key={t.id} onClick={()=>setRightTab(t.id)}
+                  className={cn('flex-1 py-2.5 text-[10px] font-bold uppercase tracking-wide border-b-2 transition-colors',rightTab===t.id?'border-purple-500 text-purple-600':'border-transparent text-slate-400 hover:text-slate-600')}>
+                  {t.label}
+                </button>
+              ))
+            ) : workflowMode==='clip' ? (
+              [{id:'properties' as const,label:'CLIP'},{id:'layers' as const,label:'LAYERS'}].map(t=>(
+                <button key={t.id} onClick={()=>setRightTab(t.id)}
+                  className={cn('flex-1 py-2.5 text-[10px] font-bold uppercase tracking-wide border-b-2 transition-colors',rightTab===t.id?'border-orange-500 text-orange-600':'border-transparent text-slate-400 hover:text-slate-600')}>
+                  {t.label}
+                </button>
+              ))
+            ) : (
+              [{id:'properties' as const,label:'PROPERTIES'},{id:'layers' as const,label:'LAYERS'}].map(t=>(
+                <button key={t.id} onClick={()=>setRightTab(t.id)}
+                  className={cn('flex-1 py-2.5 text-[10px] font-bold uppercase tracking-wide border-b-2 transition-colors',rightTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-slate-400 hover:text-slate-600')}>
+                  {t.label}
+                </button>
+              ))
+            )}
           </div>
 
-          {rightTab==='layers' ? (
-            <div className="flex-1 overflow-y-auto">
-              {/* Layer rows with colored left indicators */}
-              <div className="p-2 space-y-1">
-                {LAYER_DEFS.map(l=>(
-                  <div key={l.k} className={cn('flex items-center gap-2 px-2 py-2 rounded-xl border cursor-pointer transition-all relative overflow-hidden',
-                    activeElement===l.k||activeElement?.includes(l.k)?'border-blue-200 bg-blue-50':'border-transparent hover:border-slate-200 hover:bg-slate-50')}>
-                    {/* Colored row indicator */}
-                    <div className="absolute left-0 top-0 bottom-0 w-0.5 rounded-l" style={{background:l.rowColor}}/>
-                    <GripVertical className="w-3 h-3 text-slate-300 shrink-0 ml-0.5"/>
-                    <div className="shrink-0 w-8 h-5 rounded text-[8px] font-black flex items-center justify-center" style={{background:l.tagBg,color:l.tagText}}>{l.tag}</div>
-                    <span className="flex-1 text-[11px] font-medium text-slate-600 truncate">{l.label}</span>
-                    {/* Eye toggle */}
-                    <button onClick={()=>toggleLayer(l.k)} className="shrink-0 text-slate-300 hover:text-slate-600 transition-colors">
-                      {layers[l.k] ? <Eye className="w-3.5 h-3.5"/> : <EyeOff className="w-3.5 h-3.5 text-slate-200"/>}
-                    </button>
-                    {/* Lock toggle (functional) */}
-                    <button onClick={()=>toggleLock(l.k)} className={cn('shrink-0 transition-colors',lockedLayers.has(l.k)?'text-amber-500 hover:text-amber-700':'text-slate-200 hover:text-slate-500')}>
-                      {lockedLayers.has(l.k) ? <Lock className="w-3 h-3"/> : <Unlock className="w-3 h-3"/>}
-                    </button>
+          {workflowMode==='ai' ? (
+            /* ── AI MODE right panel (Generative Outfit) ───────────────────── */
+            rightTab==='properties' ? (
+              /* COMPOSITION settings */
+              <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Composition Settings</p>
+                  <div className="space-y-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[9px] font-semibold text-slate-600">Aspect Ratio</span>
+                      </div>
+                      <select value={aiAspectRatio} onChange={e=>setAiAspectRatio(e.target.value as any)}
+                        className="w-full text-[10px] px-2 py-1 rounded-lg border border-slate-200 bg-white">
+                        <option value="9:16">9:16 (TikTok)</option>
+                        <option value="16:9">16:9 (YouTube)</option>
+                        <option value="1:1">1:1 (Instagram)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[9px] font-semibold text-slate-600">Max Attempts</span>
+                        <span className="text-[10px] font-bold text-slate-700">{aiMaxAttempts}</span>
+                      </div>
+                      <input type="range" min={1} max={3} value={aiMaxAttempts} onChange={e=>setAiMaxAttempts(+e.target.value)}
+                        className="w-full h-2 bg-slate-200 rounded-full"/>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={aiEnhancePrompts} onChange={e=>setAiEnhancePrompts(e.target.checked)}
+                        className="w-4 h-4 rounded border border-slate-300"/>
+                      <span className="text-[10px] font-medium text-slate-600">Auto-enhance prompts via Gemini Flash</span>
+                    </label>
+                    <div>
+                      <label className="text-[9px] font-semibold text-slate-600 block mb-1">Style Hint (optional)</label>
+                      <input value={aiStyleHint} onChange={e=>setAiStyleHint(e.target.value)}
+                        placeholder="e.g., professional photography"
+                        className="w-full text-[10px] px-2 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-purple-400"/>
+                    </div>
                   </div>
-                ))}
+                </div>
+                <button onClick={runRender} disabled={aiGenerationRunning || aiGeneratedImages.length===0}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50 shadow-md"
+                  style={{background:'linear-gradient(135deg,#a855f7,#9333ea)'}}>
+                  {aiGenerationRunning?<Loader2 className="w-4 h-4 animate-spin"/>:<Download className="w-4 h-4"/>}
+                  EXPORT RESULTS
+                </button>
               </div>
-
-              {/* Master Mixer with gradient faders */}
-              <div className="border-t border-slate-100 mt-1">
-                <div className="px-3 py-2 flex items-center gap-2">
-                  <Volume2 className="w-3.5 h-3.5 text-slate-400"/>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Master Mixer</span>
-                </div>
-                <div className="flex items-end justify-center gap-5 px-3 pb-4 pt-1">
-                  <VolumeBar label="Main" value={audio.mainVideo} onChange={v=>setAudio(p=>({...p,mainVideo:v}))} gradientFrom="#6366f1" gradientTo="#8b5cf6"/>
-                  <VolumeBar label="Music" value={audio.backgroundMusic} onChange={v=>setAudio(p=>({...p,backgroundMusic:v}))} gradientFrom="#10b981" gradientTo="#14b8a6"/>
-                  <VolumeBar label="Voice" value={audio.voiceNarration} onChange={v=>setAudio(p=>({...p,voiceNarration:v}))} gradientFrom="#ec4899" gradientTo="#f43f5e"/>
-                </div>
-                <div className="px-3 pb-3">
-                  <button onClick={runRender} disabled={rendering}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50 shadow-md"
-                    style={{background:'linear-gradient(135deg,#2563eb,#4338ca)'}}>
-                    {rendering?<Loader2 className="w-4 h-4 animate-spin"/>:<Download className="w-4 h-4"/>}
-                    EXPORT PROJECT
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* Properties panel */
-            <div className="flex flex-col overflow-hidden flex-1">
-              {/* Contextual inspector — shown when element is selected */}
-              {activeElement && inspectorLabel && (
-                <div className="shrink-0 px-3 py-2.5 border-b border-slate-100 bg-slate-50 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"/>
-                    <span className="text-[11px] font-bold text-slate-700">{inspectorLabel}</span>
-                  </div>
-                  {inspectorX !== null && inspectorY !== null && (
-                    <div className="flex items-center gap-2 text-[9px] font-mono text-slate-500">
-                      <span className="bg-slate-200 px-1.5 py-0.5 rounded">X <strong className="text-slate-700">{inspectorX}</strong></span>
-                      <span className="bg-slate-200 px-1.5 py-0.5 rounded">Y <strong className="text-slate-700">{inspectorY}</strong></span>
+            ) : (
+              /* RESULTS gallery */
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Generated Images ({aiGeneratedImages.length})</p>
+                  {aiGeneratedImages.length===0 ? (
+                    <div className="flex flex-col items-center justify-center h-20 text-center rounded-xl border-2 border-dashed border-slate-200 p-3">
+                      <ImageIcon className="w-5 h-5 text-slate-300 mb-1"/>
+                      <p className="text-[9px] text-slate-400">No images generated yet</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {aiGeneratedImages.map((img, idx)=>(
+                        <div key={img.id} className="group relative rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center h-32">
+                          {img.path ? (
+                            <img src={`/api/file?path=${encodeURIComponent(img.path)}`} alt={img.angle} className="w-full h-full object-cover"/>
+                          ) : (
+                            <Loader2 className="w-5 h-5 animate-spin text-slate-400"/>
+                          )}
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center opacity-0 group-hover:opacity-100">
+                            <button onClick={()=>window.open(`/api/file?path=${encodeURIComponent(img.path)}`, '_blank')}
+                              className="text-white text-sm font-bold">↓</button>
+                          </div>
+                          <button onClick={()=>setAiGeneratedImages(p=>p.filter(it=>it.id!==img.id))}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white items-center justify-center hidden group-hover:flex transition-all">
+                            <X className="w-3 h-3"/>
+                          </button>
+                          <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[8px] font-bold px-1.5 py-0.5 rounded truncate max-w-[120px]">
+                            {img.angle}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   )}
-                  <div className="space-y-0.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Opacity</span>
-                      <span className="text-[9px] font-mono text-slate-700">100%</span>
-                    </div>
-                    <div className="relative h-1.5 bg-slate-200 rounded-full">
-                      <div className="absolute left-0 top-0 h-full bg-blue-500 rounded-full" style={{width:'100%'}}/>
-                      <input type="range" min={0} max={100} defaultValue={100} readOnly
-                        className="absolute inset-0 w-full opacity-0 cursor-default"/>
-                    </div>
+                </div>
+                {aiGeneratedImages.length>0 && (
+                  <div className="space-y-2">
+                    <button onClick={()=>{/* Download all as ZIP */}}
+                      className="w-full py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold transition-colors">
+                      📥 Download All (ZIP)
+                    </button>
+                    <button onClick={()=>{/* Compile to video */}}
+                      className="w-full py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold transition-colors">
+                      🎬 Compile to Video
+                    </button>
+                    <button onClick={()=>setAiGeneratedImages([])}
+                      className="w-full py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold transition-colors">
+                      🗑️ Delete All
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          ) : workflowMode==='clip' ? (
+            /* ── CLIP MODE right panel ────────────────────────────────────── */
+            rightTab==='properties' ? (
+              /* CLIP settings */
+              <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Render Options</p>
+                  <div className="space-y-2">
+                    <button onClick={()=>setClipAddFrame(v=>!v)}
+                      className={cn('w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all',
+                        clipAddFrame?'bg-orange-50 border-orange-200':'bg-white border-slate-200 hover:border-slate-300')}>
+                      <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0',clipAddFrame?'bg-orange-100':'bg-slate-100')}>
+                        <Film className={cn('w-4 h-4',clipAddFrame?'text-orange-600':'text-slate-400')}/>
+                      </div>
+                      <div className="flex-1">
+                        <p className={cn('text-[11px] font-semibold',clipAddFrame?'text-orange-700':'text-slate-700')}>Frame Template</p>
+                        <p className="text-[9px] text-slate-400">Overlay branded frame on clip</p>
+                      </div>
+                      <div className={cn('w-8 h-4 rounded-full transition-all shrink-0',clipAddFrame?'bg-orange-500':'bg-slate-200')}>
+                        <div className={cn('w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all mt-0.5',clipAddFrame?'translate-x-4':'translate-x-0.5')}/>
+                      </div>
+                    </button>
+                    <button onClick={()=>setClipAddLogo(v=>!v)}
+                      className={cn('w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all',
+                        clipAddLogo?'bg-orange-50 border-orange-200':'bg-white border-slate-200 hover:border-slate-300')}>
+                      <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0',clipAddLogo?'bg-orange-100':'bg-slate-100')}>
+                        <ImageIcon className={cn('w-4 h-4',clipAddLogo?'text-orange-600':'text-slate-400')}/>
+                      </div>
+                      <div className="flex-1">
+                        <p className={cn('text-[11px] font-semibold',clipAddLogo?'text-orange-700':'text-slate-700')}>Logo Watermark</p>
+                        <p className="text-[9px] text-slate-400">Add logo to each clip</p>
+                      </div>
+                      <div className={cn('w-8 h-4 rounded-full transition-all shrink-0',clipAddLogo?'bg-orange-500':'bg-slate-200')}>
+                        <div className={cn('w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all mt-0.5',clipAddLogo?'translate-x-4':'translate-x-0.5')}/>
+                      </div>
+                    </button>
                   </div>
                 </div>
-              )}
-
-              {/* Properties sub-tabs */}
-              <div className="flex border-b border-slate-100 shrink-0 overflow-x-auto">
-                {([{id:'source' as const,label:'Source'},{id:'presets' as const,label:'Presets'},{id:'layout' as const,label:'Layout'},{id:'blur' as const,label:'Blur'}]).map(t=>(
-                  <button key={t.id} onClick={()=>setPropTab(t.id)}
-                    className={cn('flex-1 py-2 text-[9px] font-bold uppercase tracking-wide border-b-2 whitespace-nowrap transition-colors',propTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-slate-400 hover:text-slate-600')}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-
-                {/* Source */}
-                {propTab==='source' && (
-                  <div className="space-y-3">
-                    <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Active Mode</p>
-                      {(() => {
-                        const m=SOURCE_MODES.find(x=>x.id===sourceMode.mode)||SOURCE_MODES[0]
-                        return (
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{background:m.color+'15'}}>
-                              <m.icon className="w-4 h-4" style={{color:m.color}}/>
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-slate-700">{m.label}</p>
-                              <p className="text-[9px] text-slate-400 leading-tight">{m.desc}</p>
-                            </div>
-                          </div>
-                        )
-                      })()}
+                <div className="border-t border-slate-100 pt-3">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Split into Clips</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                      <span className="text-[11px] font-semibold text-slate-700">Number of clips</span>
+                      <div className="flex items-center gap-2">
+                        <button onClick={()=>setClipSplitCount(v=>Math.max(1,v-1))} className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold flex items-center justify-center transition-colors">−</button>
+                        <span className="text-sm font-black text-slate-700 w-6 text-center">{clipSplitCount}</span>
+                        <button onClick={()=>setClipSplitCount(v=>Math.min(20,v+1))} className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold flex items-center justify-center transition-colors">+</button>
+                      </div>
                     </div>
-                    <SourceModePanel config={sourceMode} onChange={setSourceMode}/>
+                    <p className="text-[9px] text-slate-400 px-1">Each output clip will be processed separately and queued for upload.</p>
+                  </div>
+                </div>
+                <div className="border-t border-slate-100 pt-3 space-y-2">
+                  <div className="bg-orange-50 rounded-xl p-3 border border-orange-100 space-y-1.5">
+                    <div className="flex justify-between text-[10px]"><span className="text-orange-600">Frame template</span><span className={cn('font-bold',clipAddFrame?'text-orange-700':'text-slate-400')}>{clipAddFrame?'ON':'OFF'}</span></div>
+                    <div className="flex justify-between text-[10px]"><span className="text-orange-600">Logo</span><span className={cn('font-bold',clipAddLogo?'text-orange-700':'text-slate-400')}>{clipAddLogo?'ON':'OFF'}</span></div>
+                    <div className="flex justify-between text-[10px]"><span className="text-orange-600">Output clips</span><span className="font-bold text-orange-700">{clipSplitCount}</span></div>
+                  </div>
+                  <button onClick={runRender} disabled={rendering}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50 shadow-md"
+                    style={{background:'linear-gradient(135deg,#ea580c,#c2410c)'}}>
+                    {rendering?<Loader2 className="w-4 h-4 animate-spin"/>:<Scissors className="w-4 h-4"/>}
+                    RENDER CLIPS
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Clip mode — Layers panel */
+              <div className="flex-1 overflow-y-auto">
+                <div className="p-2 space-y-1">
+                  {LAYER_DEFS.map(l=>(
+                    <div key={l.k} className={cn('flex items-center gap-2 px-2 py-2 rounded-xl border cursor-pointer transition-all relative overflow-hidden',
+                      activeElement===l.k||activeElement?.includes(l.k)?'border-orange-200 bg-orange-50':'border-transparent hover:border-slate-200 hover:bg-slate-50')}>
+                      <div className="absolute left-0 top-0 bottom-0 w-0.5 rounded-l" style={{background:l.rowColor}}/>
+                      <GripVertical className="w-3 h-3 text-slate-300 shrink-0 ml-0.5"/>
+                      <div className="shrink-0 w-8 h-5 rounded text-[8px] font-black flex items-center justify-center" style={{background:l.tagBg,color:l.tagText}}>{l.tag}</div>
+                      <span className="flex-1 text-[11px] font-medium text-slate-600 truncate">{l.label}</span>
+                      <button onClick={()=>toggleLayer(l.k)} className="shrink-0 text-slate-300 hover:text-slate-600 transition-colors">
+                        {layers[l.k] ? <Eye className="w-3.5 h-3.5"/> : <EyeOff className="w-3.5 h-3.5 text-slate-200"/>}
+                      </button>
+                      <button onClick={()=>toggleLock(l.k)} className={cn('shrink-0 transition-colors',lockedLayers.has(l.k)?'text-amber-500 hover:text-amber-700':'text-slate-200 hover:text-slate-500')}>
+                        {lockedLayers.has(l.k) ? <Lock className="w-3 h-3"/> : <Unlock className="w-3 h-3"/>}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          ) : (
+            /* ── NEWS MODE (existing full panels) ─────────────────────────── */
+            rightTab==='layers' ? (
+              <div className="flex-1 overflow-y-auto">
+                {/* Layer rows with colored left indicators */}
+                <div className="p-2 space-y-1">
+                  {LAYER_DEFS.map(l=>(
+                    <div key={l.k} className={cn('flex items-center gap-2 px-2 py-2 rounded-xl border cursor-pointer transition-all relative overflow-hidden',
+                      activeElement===l.k||activeElement?.includes(l.k)?'border-blue-200 bg-blue-50':'border-transparent hover:border-slate-200 hover:bg-slate-50')}>
+                      {/* Colored row indicator */}
+                      <div className="absolute left-0 top-0 bottom-0 w-0.5 rounded-l" style={{background:l.rowColor}}/>
+                      <GripVertical className="w-3 h-3 text-slate-300 shrink-0 ml-0.5"/>
+                      <div className="shrink-0 w-8 h-5 rounded text-[8px] font-black flex items-center justify-center" style={{background:l.tagBg,color:l.tagText}}>{l.tag}</div>
+                      <span className="flex-1 text-[11px] font-medium text-slate-600 truncate">{l.label}</span>
+                      {/* Eye toggle */}
+                      <button onClick={()=>toggleLayer(l.k)} className="shrink-0 text-slate-300 hover:text-slate-600 transition-colors">
+                        {layers[l.k] ? <Eye className="w-3.5 h-3.5"/> : <EyeOff className="w-3.5 h-3.5 text-slate-200"/>}
+                      </button>
+                      {/* Lock toggle (functional) */}
+                      <button onClick={()=>toggleLock(l.k)} className={cn('shrink-0 transition-colors',lockedLayers.has(l.k)?'text-amber-500 hover:text-amber-700':'text-slate-200 hover:text-slate-500')}>
+                        {lockedLayers.has(l.k) ? <Lock className="w-3 h-3"/> : <Unlock className="w-3 h-3"/>}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Master Mixer with gradient faders */}
+                <div className="border-t border-slate-100 mt-1">
+                  <div className="px-3 py-2 flex items-center gap-2">
+                    <Volume2 className="w-3.5 h-3.5 text-slate-400"/>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Master Mixer</span>
+                  </div>
+                  <div className="flex items-end justify-center gap-5 px-3 pb-4 pt-1">
+                    <VolumeBar label="Main" value={audio.mainVideo} onChange={v=>setAudio(p=>({...p,mainVideo:v}))} gradientFrom="#6366f1" gradientTo="#8b5cf6"/>
+                    <VolumeBar label="Music" value={audio.backgroundMusic} onChange={v=>setAudio(p=>({...p,backgroundMusic:v}))} gradientFrom="#10b981" gradientTo="#14b8a6"/>
+                    <VolumeBar label="Voice" value={audio.voiceNarration} onChange={v=>setAudio(p=>({...p,voiceNarration:v}))} gradientFrom="#ec4899" gradientTo="#f43f5e"/>
+                  </div>
+                  <div className="px-3 pb-3">
+                    <button onClick={runRender} disabled={rendering}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50 shadow-md"
+                      style={{background:'linear-gradient(135deg,#2563eb,#4338ca)'}}>
+                      {rendering?<Loader2 className="w-4 h-4 animate-spin"/>:<Download className="w-4 h-4"/>}
+                      EXPORT PROJECT
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* News Properties panel */
+              <div className="flex flex-col overflow-hidden flex-1">
+                {/* Contextual inspector — shown when element is selected */}
+                {activeElement && inspectorLabel && (
+                  <div className="shrink-0 px-3 py-2.5 border-b border-slate-100 bg-slate-50 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"/>
+                      <span className="text-[11px] font-bold text-slate-700">{inspectorLabel}</span>
+                    </div>
+                    {inspectorX !== null && inspectorY !== null && (
+                      <div className="flex items-center gap-2 text-[9px] font-mono text-slate-500">
+                        <span className="bg-slate-200 px-1.5 py-0.5 rounded">X <strong className="text-slate-700">{inspectorX}</strong></span>
+                        <span className="bg-slate-200 px-1.5 py-0.5 rounded">Y <strong className="text-slate-700">{inspectorY}</strong></span>
+                      </div>
+                    )}
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Opacity</span>
+                        <span className="text-[9px] font-mono text-slate-700">100%</span>
+                      </div>
+                      <div className="relative h-1.5 bg-slate-200 rounded-full">
+                        <div className="absolute left-0 top-0 h-full bg-blue-500 rounded-full" style={{width:'100%'}}/>
+                        <input type="range" min={0} max={100} defaultValue={100} readOnly
+                          className="absolute inset-0 w-full opacity-0 cursor-default"/>
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Presets */}
-                {propTab==='presets' && (<>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold text-slate-500">Apply preset để load layout + audio.</p>
-                    <button onClick={saveAsPreset} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"><Plus className="w-3 h-3"/>Save</button>
-                  </div>
-                  <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">Built-in</p>
-                  {BUILTIN_PRESETS.map(p=><PresetCard key={p.id} preset={p} isActive={activePresetId===p.id} onApply={()=>applyPreset(p)} onDuplicate={()=>duplicatePreset(p)}/>)}
-                  {userPresets.length>0&&(<>
-                    <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest pt-1">My Presets</p>
-                    {userPresets.map(p=><PresetCard key={p.id} preset={p} isActive={activePresetId===p.id} onApply={()=>applyPreset(p)} onDuplicate={()=>duplicatePreset(p)} onDelete={()=>deleteUserPreset(p.id)} onRename={n=>renameUserPreset(p.id,n)}/>)}
+                {/* Properties sub-tabs */}
+                <div className="flex border-b border-slate-100 shrink-0 overflow-x-auto">
+                  {([{id:'source' as const,label:'Source'},{id:'presets' as const,label:'Presets'},{id:'layout' as const,label:'Layout'},{id:'blur' as const,label:'Blur'}]).map(t=>(
+                    <button key={t.id} onClick={()=>setPropTab(t.id)}
+                      className={cn('flex-1 py-2 text-[9px] font-bold uppercase tracking-wide border-b-2 whitespace-nowrap transition-colors',propTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-slate-400 hover:text-slate-600')}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+
+                  {/* Source */}
+                  {propTab==='source' && (
+                    <div className="space-y-3">
+                      <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Active Mode</p>
+                        {(() => {
+                          const m=SOURCE_MODES.find(x=>x.id===sourceMode.mode)||SOURCE_MODES[0]
+                          return (
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{background:m.color+'15'}}>
+                                <m.icon className="w-4 h-4" style={{color:m.color}}/>
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-slate-700">{m.label}</p>
+                                <p className="text-[9px] text-slate-400 leading-tight">{m.desc}</p>
+                              </div>
+                            </div>
+                          )
+                        })()}
+                      </div>
+                      <SourceModePanel config={sourceMode} onChange={setSourceMode}/>
+                    </div>
+                  )}
+
+                  {/* Presets */}
+                  {propTab==='presets' && (<>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-semibold text-slate-500">Apply preset để load layout + audio.</p>
+                      <button onClick={saveAsPreset} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"><Plus className="w-3 h-3"/>Save</button>
+                    </div>
+                    <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">Built-in</p>
+                    {BUILTIN_PRESETS.map(p=><PresetCard key={p.id} preset={p} isActive={activePresetId===p.id} onApply={()=>applyPreset(p)} onDuplicate={()=>duplicatePreset(p)}/>)}
+                    {userPresets.length>0&&(<>
+                      <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest pt-1">My Presets</p>
+                      {userPresets.map(p=><PresetCard key={p.id} preset={p} isActive={activePresetId===p.id} onApply={()=>applyPreset(p)} onDuplicate={()=>duplicatePreset(p)} onDelete={()=>deleteUserPreset(p.id)} onRename={n=>renameUserPreset(p.id,n)}/>)}
+                    </>)}
                   </>)}
-                </>)}
 
-                {/* Layout */}
-                {propTab==='layout' && (<>
-                  <Section label="Template Video" active={activeSection==='template'} color="#2563eb" icon={Film}>
-                    <p className="text-[9px] text-slate-400">Kéo top-bar di chuyển, kéo góc/cạnh resize.</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <NumField label="X" value={layout.templateX} onChange={v=>onLayout({templateX:v})}/>
-                      <NumField label="Y" value={layout.templateY} onChange={v=>onLayout({templateY:v})} max={REAL_H}/>
-                      <NumField label="Width" value={layout.templateW} onChange={v=>onLayout({templateW:v})} min={80} max={REAL_W}/>
-                      <NumField label="Height" value={layout.templateH} onChange={v=>onLayout({templateH:v})} min={-1} max={REAL_H} hint="-1=auto"/>
-                    </div>
-                    {/* Scale slider */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Scale</span>
-                        <span className="text-[9px] font-mono text-slate-700">{Math.round((layout.templateW/REAL_W)*100)}%</span>
+                  {/* Layout */}
+                  {propTab==='layout' && (<>
+                    <Section label="Template Video" active={activeSection==='template'} color="#2563eb" icon={Film}>
+                      <p className="text-[9px] text-slate-400">Kéo top-bar di chuyển, kéo góc/cạnh resize.</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <NumField label="X" value={layout.templateX} onChange={v=>onLayout({templateX:v})}/>
+                        <NumField label="Y" value={layout.templateY} onChange={v=>onLayout({templateY:v})} max={REAL_H}/>
+                        <NumField label="Width" value={layout.templateW} onChange={v=>onLayout({templateW:v})} min={80} max={REAL_W}/>
+                        <NumField label="Height" value={layout.templateH} onChange={v=>onLayout({templateH:v})} min={-1} max={REAL_H} hint="-1=auto"/>
                       </div>
-                      <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="absolute left-0 top-0 h-full bg-blue-400 rounded-full" style={{width:`${(layout.templateW/REAL_W)*100}%`}}/>
-                        <input type="range" min={80} max={REAL_W} step={10} value={layout.templateW}
-                          onChange={e=>onLayout({templateW:+e.target.value})}
-                          className="absolute inset-0 w-full opacity-0 cursor-pointer"/>
+                      {/* Scale slider */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Scale</span>
+                          <span className="text-[9px] font-mono text-slate-700">{Math.round((layout.templateW/REAL_W)*100)}%</span>
+                        </div>
+                        <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="absolute left-0 top-0 h-full bg-blue-400 rounded-full" style={{width:`${(layout.templateW/REAL_W)*100}%`}}/>
+                          <input type="range" min={80} max={REAL_W} step={10} value={layout.templateW}
+                            onChange={e=>onLayout({templateW:+e.target.value})}
+                            className="absolute inset-0 w-full opacity-0 cursor-pointer"/>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-[9px] text-blue-600 bg-blue-50 rounded-lg px-2 py-1.5 border border-blue-100">
-                      Rendered: {layout.templateW}×{tplRH}px
-                    </div>
-                    <NumField label="Main video skip (sequential)" value={layout.mainVideoSkip} onChange={v=>onLayout({mainVideoSkip:v})} min={0} max={600} unit="s"/>
-                  </Section>
-                  <Section label="Logo" active={activeSection==='logo'} color="#0ea5e9" icon={ImageIcon}>
-                    <div className="grid grid-cols-2 gap-2">
-                      <NumField label="X" value={layout.logoX} onChange={v=>onLayout({logoX:v})} max={REAL_W}/>
-                      <NumField label="Y" value={layout.logoY} onChange={v=>onLayout({logoY:v})} max={REAL_H}/>
-                      <NumField label="W" value={layout.logoW} onChange={v=>onLayout({logoW:v})} min={10} max={REAL_W}/>
-                      <NumField label="H" value={layout.logoH} onChange={v=>onLayout({logoH:v})} min={5} max={REAL_H}/>
-                    </div>
-                    {/* Scale slider */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Scale</span>
-                        <span className="text-[9px] font-mono text-slate-700">{Math.round((layout.logoW/REAL_W)*100)}%</span>
+                      <div className="text-[9px] text-blue-600 bg-blue-50 rounded-lg px-2 py-1.5 border border-blue-100">
+                        Rendered: {layout.templateW}×{tplRH}px
                       </div>
-                      <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="absolute left-0 top-0 h-full bg-sky-400 rounded-full" style={{width:`${(layout.logoW/REAL_W)*100}%`}}/>
-                        <input type="range" min={10} max={600} step={5} value={layout.logoW}
-                          onChange={e=>onLayout({logoW:+e.target.value})}
-                          className="absolute inset-0 w-full opacity-0 cursor-pointer"/>
+                      <NumField label="Main video skip (sequential)" value={layout.mainVideoSkip} onChange={v=>onLayout({mainVideoSkip:v})} min={0} max={600} unit="s"/>
+                    </Section>
+                    <Section label="Logo" active={activeSection==='logo'} color="#0ea5e9" icon={ImageIcon}>
+                      <div className="grid grid-cols-2 gap-2">
+                        <NumField label="X" value={layout.logoX} onChange={v=>onLayout({logoX:v})} max={REAL_W}/>
+                        <NumField label="Y" value={layout.logoY} onChange={v=>onLayout({logoY:v})} max={REAL_H}/>
+                        <NumField label="W" value={layout.logoW} onChange={v=>onLayout({logoW:v})} min={10} max={REAL_W}/>
+                        <NumField label="H" value={layout.logoH} onChange={v=>onLayout({logoH:v})} min={5} max={REAL_H}/>
                       </div>
-                    </div>
-                  </Section>
-                  <Section label="Title Overlay" active={activeSection==='title'} color="#7c3aed" icon={Type}>
-                    <div className="grid grid-cols-2 gap-2">
-                      <NumField label="X" value={layout.titleX} onChange={v=>onLayout({titleX:v})} min={-REAL_W} max={REAL_W}/>
-                      <NumField label="Y" value={layout.titleY} onChange={v=>onLayout({titleY:v})} max={REAL_H}/>
-                      <NumField label="W" value={layout.titleW} onChange={v=>onLayout({titleW:v})} min={100} max={REAL_W}/>
-                      <NumField label="H" value={layout.titleH} onChange={v=>onLayout({titleH:v})} min={20} max={800}/>
-                      <NumField label="Duration" value={layout.titleDuration} onChange={v=>onLayout({titleDuration:v})} min={1} max={60} unit="s" hint="Giây hiển thị"/>
-                    </div>
-                  </Section>
-                </>)}
+                      {/* Scale slider */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Scale</span>
+                          <span className="text-[9px] font-mono text-slate-700">{Math.round((layout.logoW/REAL_W)*100)}%</span>
+                        </div>
+                        <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="absolute left-0 top-0 h-full bg-sky-400 rounded-full" style={{width:`${(layout.logoW/REAL_W)*100}%`}}/>
+                          <input type="range" min={10} max={600} step={5} value={layout.logoW}
+                            onChange={e=>onLayout({logoW:+e.target.value})}
+                            className="absolute inset-0 w-full opacity-0 cursor-pointer"/>
+                        </div>
+                      </div>
+                    </Section>
+                    <Section label="Title Overlay" active={activeSection==='title'} color="#7c3aed" icon={Type}>
+                      <div className="grid grid-cols-2 gap-2">
+                        <NumField label="X" value={layout.titleX} onChange={v=>onLayout({titleX:v})} min={-REAL_W} max={REAL_W}/>
+                        <NumField label="Y" value={layout.titleY} onChange={v=>onLayout({titleY:v})} max={REAL_H}/>
+                        <NumField label="W" value={layout.titleW} onChange={v=>onLayout({titleW:v})} min={100} max={REAL_W}/>
+                        <NumField label="H" value={layout.titleH} onChange={v=>onLayout({titleH:v})} min={20} max={800}/>
+                        <NumField label="Duration" value={layout.titleDuration} onChange={v=>onLayout({titleDuration:v})} min={1} max={60} unit="s" hint="Giây hiển thị"/>
+                      </div>
+                    </Section>
+                  </>)}
 
-                {/* Blur */}
-                {propTab==='blur' && (<>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold text-slate-500">Blur zones để che watermark.</p>
-                    <button onClick={addBlurZone} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"><Plus className="w-3 h-3"/>Add</button>
-                  </div>
-                  {blurZones.map(z=>{
-                    const bzKey:ActiveEl=`blur-${z.id}`,isA=activeElement===bzKey
-                    return (
-                      <div key={z.id} className={cn('rounded-xl border p-3 space-y-2 cursor-pointer transition-all',isA?'border-amber-300 bg-amber-50':'border-slate-200 bg-white hover:border-slate-300')} onClick={()=>setActiveElement(bzKey)}>
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-sm bg-amber-400 shrink-0"/>
-                          <input value={z.label} onChange={e=>updateBlurZone(z.id,{label:e.target.value})}
-                            className="flex-1 bg-transparent text-[11px] font-semibold text-slate-700 focus:outline-none"
-                            onClick={e=>e.stopPropagation()}/>
-                          <span className="text-[9px] text-slate-400 font-mono">σ={z.sigma}</span>
-                          {blurZones.length>1&&<button onClick={e=>{e.stopPropagation();removeBlurZone(z.id)}} className="text-slate-300 hover:text-red-500 transition-colors p-0.5"><Trash2 className="w-3 h-3"/></button>}
+                  {/* Blur */}
+                  {propTab==='blur' && (<>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-semibold text-slate-500">Blur zones để che watermark.</p>
+                      <button onClick={addBlurZone} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"><Plus className="w-3 h-3"/>Add</button>
+                    </div>
+                    {blurZones.map(z=>{
+                      const bzKey:ActiveEl=`blur-${z.id}`,isA=activeElement===bzKey
+                      return (
+                        <div key={z.id} className={cn('rounded-xl border p-3 space-y-2 cursor-pointer transition-all',isA?'border-amber-300 bg-amber-50':'border-slate-200 bg-white hover:border-slate-300')} onClick={()=>setActiveElement(bzKey)}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-sm bg-amber-400 shrink-0"/>
+                            <input value={z.label} onChange={e=>updateBlurZone(z.id,{label:e.target.value})}
+                              className="flex-1 bg-transparent text-[11px] font-semibold text-slate-700 focus:outline-none"
+                              onClick={e=>e.stopPropagation()}/>
+                            <span className="text-[9px] text-slate-400 font-mono">σ={z.sigma}</span>
+                            {blurZones.length>1&&<button onClick={e=>{e.stopPropagation();removeBlurZone(z.id)}} className="text-slate-300 hover:text-red-500 transition-colors p-0.5"><Trash2 className="w-3 h-3"/></button>}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <NumField label="X" value={z.x} onChange={v=>updateBlurZone(z.id,{x:v})}/>
+                            <NumField label="Y" value={z.y} onChange={v=>updateBlurZone(z.id,{y:v})}/>
+                            <NumField label="W" value={z.w} onChange={v=>updateBlurZone(z.id,{w:v})} min={10}/>
+                            <NumField label="H" value={z.h} onChange={v=>updateBlurZone(z.id,{h:v})} min={5}/>
+                          </div>
+                          <NumField label="Blur strength (sigma)" value={z.sigma} onChange={v=>updateBlurZone(z.id,{sigma:v})} min={1} max={100} unit=""/>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <NumField label="X" value={z.x} onChange={v=>updateBlurZone(z.id,{x:v})}/>
-                          <NumField label="Y" value={z.y} onChange={v=>updateBlurZone(z.id,{y:v})}/>
-                          <NumField label="W" value={z.w} onChange={v=>updateBlurZone(z.id,{w:v})} min={10}/>
-                          <NumField label="H" value={z.h} onChange={v=>updateBlurZone(z.id,{h:v})} min={5}/>
-                        </div>
-                        <NumField label="Blur strength (sigma)" value={z.sigma} onChange={v=>updateBlurZone(z.id,{sigma:v})} min={1} max={100} unit=""/>
-                      </div>
-                    )
-                  })}
-                </>)}
+                      )
+                    })}
+                  </>)}
+                </div>
               </div>
-            </div>
+            )
           )}
         </div>
       </div>
