@@ -6,7 +6,7 @@ import {
   Play, Square, RotateCcw, FastForward,
   Loader2, Plus, Link as LinkIcon,
   Pencil, Trash2, Check, X, Video, EyeOff, Monitor, MonitorOff,
-  Scissors, Sparkles, Youtube, Clock, Image as ImageIcon,
+  Scissors, Sparkles, Youtube, Clock, Image as ImageIcon, Settings,
 } from 'lucide-react'
 import {
   TikTokIcon, FacebookIcon, ThreadsIcon, YouTubeIcon,
@@ -191,6 +191,12 @@ export default function WorkflowPage() {
   const [clipAddFrame, setClipAddFrame] = useState(false)
 
   // ── AI Creator state ───────────────────────────────────────────────────────
+  
+  // AI Flow Configuration
+  const [aiEngine, setAiEngine] = useState<'browser' | 'api'>('browser')
+  const [aiOutputTarget, setAiOutputTarget] = useState<'image' | 'video'>('image')
+  const [aiContextMode, setAiContextMode] = useState<'model' | 'background'>('model')
+
   const [aiRunning, setAiRunning] = useState(false)
   const aiAbortRef = useRef<AbortController | null>(null)
 
@@ -998,6 +1004,37 @@ export default function WorkflowPage() {
           </div>
 
           <div className="grid grid-cols-[1fr_1fr_300px] gap-4">
+
+            {/* ─ GENERAL SETTINGS ─ */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 col-span-3">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <Settings className="w-4 h-4 text-violet-500" /> Cài đặt chung (General Settings)
+              </h3>
+              <div className="grid grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Engine (Cách thức chạy)</label>
+                  <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <button onClick={() => setAiEngine('api')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${aiEngine === 'api' ? 'bg-white shadow text-violet-700' : 'text-slate-500 hover:text-slate-700'}`}>Geminie API (Trả phí, Ổn định)</button>
+                    <button onClick={() => setAiEngine('browser')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${aiEngine === 'browser' ? 'bg-white shadow text-violet-700' : 'text-slate-500 hover:text-slate-700'}`}>Browser (Playwright, Miễn phí)</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Chế độ ghép (Context Mode)</label>
+                  <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <button onClick={() => setAiContextMode('model')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${aiContextMode === 'model' ? 'bg-white shadow text-emerald-700' : 'text-slate-500 hover:text-slate-700'}`}>Ghép với Người Mẫu</button>
+                    <button onClick={() => setAiContextMode('background')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${aiContextMode === 'background' ? 'bg-white shadow text-emerald-700' : 'text-slate-500 hover:text-slate-700'}`}>Ghép với Phông Nền</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-2">Đầu ra (Output)</label>
+                  <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <button onClick={() => setAiOutputTarget('image')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${aiOutputTarget === 'image' ? 'bg-white shadow text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>Bộ sưu tập Ảnh</button>
+                    <button onClick={() => setAiOutputTarget('video')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${aiOutputTarget === 'video' ? 'bg-white shadow text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>Video Clip (TikTok/Reels)</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
 
             {/* ─ LEFT: Product Images + Model Config ─ */}
             <div className="space-y-4">
