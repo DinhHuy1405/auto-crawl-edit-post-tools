@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
           '--model', resolvedModel,
           '--outfit', resolvedOutfit,
           '--aspect-ratio', aspectRatio || '9:16',
-          '--output-dir', \`./temp-images/${runId}\`,
+          '--output-dir', `./temp-images/${runId}`,
           '--run-id', runId
         ]
         
