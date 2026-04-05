@@ -13,19 +13,24 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const {
-      backgroundImagePath,
-      extractedOutfitPath,
+      modelImagePath,
+      backgroundImagePath, // legacy alias
+      outfitImagePath,
+      extractedOutfitPath, // legacy alias
       anglePrompts,
       aspectRatio,
       maxAttemptsPerAngle,
-      enhancePrompts,
       styleHint,
+      headless,
       runId
     } = body
 
-    if (!backgroundImagePath || !extractedOutfitPath || !anglePrompts?.length) {
+    const resolvedModel = modelImagePath || backgroundImagePath
+    const resolvedOutfit = outfitImagePath || extractedOutfitPath
+
+    if (!resolvedModel || !resolvedOutfit || !anglePrompts?.length) {
       return NextResponse.json(
-        { error: 'Missing required fields: backgroundImagePath, extractedOutfitPath, anglePrompts' },
+        { error: 'Missing required fields: modelImagePath, outfitImagePath, anglePrompts' },
         { status: 400 }
       )
     }
@@ -41,8 +46,8 @@ export async function POST(req: NextRequest) {
         const args = [
           resolve(process.cwd(), '../../../edit-video/generative-outfit.mjs'),
           '--mode', 'compose',
-          '--background', backgroundImagePath,
-          '--outfit', extractedOutfitPath,
+          '--model', resolvedModel,
+          '--outfit', resolvedOutfit,
           '--aspect-ratio', aspectRatio || '9:16',
           '--output-dir', `./temp-images/${runId}`,
           '--run-id', runId
@@ -50,14 +55,14 @@ export async function POST(req: NextRequest) {
 
         // Add angle prompts
         args.push('--prompts')
-        anglePrompts.forEach(p => args.push(p))
+        anglePrompts.forEach((p: string) => args.push(p))
 
         // Optional flags
         if (maxAttemptsPerAngle) {
           args.push('--max-attempts', String(maxAttemptsPerAngle))
         }
-        if (enhancePrompts) {
-          args.push('--enhance-prompts')
+        if (headless) {
+          args.push('--headless')
         }
         if (styleHint) {
           args.push('--style-hint', styleHint)

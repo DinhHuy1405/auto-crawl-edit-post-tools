@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import {
   Save, RefreshCw, Key, Volume2, Film, Mic, Newspaper,
   Globe, Settings, CheckCircle2, XCircle, Clock, RotateCcw,
-  Loader2,
+  Loader2, Cookie, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -19,21 +19,30 @@ interface AppConfig {
   crawler: { useJDownloader: boolean; downloadFormat: string; minDurationSec: number; channels: { id: string; label: string; enabled: boolean }[] }
   upload: { platforms: string[]; showBrowser: boolean; timeout: number }
 }
+interface CookieAccount {
+  id: string
+  label: string
+  enabled: boolean
+  createdAt: string
+  content: string
+}
+
 interface ApiKey {
   name: string; key: string; env: string
   status: 'active' | 'quota_exceeded' | 'standby'
   lastUsed: string | null; quotaExceededAt: string | null
 }
 
-type TabId = 'audio' | 'video' | 'tts' | 'news' | 'upload' | 'keys'
+type TabId = 'audio' | 'video' | 'tts' | 'news' | 'upload' | 'keys' | 'cookies'
 
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: 'audio',  label: 'Audio',    icon: Volume2   },
-  { id: 'video',  label: 'Video',    icon: Film      },
-  { id: 'tts',    label: 'TTS',      icon: Mic       },
-  { id: 'news',   label: 'News',     icon: Newspaper },
-  { id: 'upload', label: 'Upload',   icon: Globe     },
-  { id: 'keys',   label: 'API Keys', icon: Key       },
+  { id: 'audio',   label: 'Audio',    icon: Volume2   },
+  { id: 'video',   label: 'Video',    icon: Film      },
+  { id: 'tts',     label: 'TTS',      icon: Mic       },
+  { id: 'news',    label: 'News',     icon: Newspaper },
+  { id: 'upload',  label: 'Upload',   icon: Globe     },
+  { id: 'keys',    label: 'API Keys', icon: Key       },
+  { id: 'cookies', label: 'Cookies',  icon: Cookie    },
 ]
 
 const VOICES = ['fenrir', 'erinome', 'alnilam', 'sulafat', 'despina', 'aoede']
@@ -71,9 +80,89 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   return <label className="block text-xs font-medium text-slate-600 mb-1.5">{children}</label>
 }
 
+function CookieAccountCard({
+  account, onToggle, onLabelChange, onSave, onDelete,
+}: {
+  account: CookieAccount
+  onToggle: (enabled: boolean) => void
+  onLabelChange: (label: string) => void
+  onSave: (content: string) => void
+  onDelete: () => void
+}) {
+  const [content, setContent] = useState(account.content ?? '')
+  const [saving, setSaving] = useState(false)
+  const [editLabel, setEditLabel] = useState(false)
+  const [label, setLabel] = useState(account.label)
+  const cookieCount = content.split('\n').filter(l => l.trim() && !l.startsWith('#')).length
+
+  const handleSave = async () => {
+    setSaving(true)
+    await onSave(content)
+    setSaving(false)
+  }
+
+  return (
+    <div className={`border rounded-xl p-4 space-y-3 transition-colors ${account.enabled ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50'}`}>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onToggle(!account.enabled)}
+          className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 ${account.enabled ? 'bg-green-500' : 'bg-slate-300'}`}
+        >
+          <span className={`block w-3 h-3 bg-white rounded-full shadow transition-transform mx-0.5 ${account.enabled ? 'translate-x-4' : ''}`} />
+        </button>
+        {editLabel ? (
+          <input
+            autoFocus
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            onBlur={() => { setEditLabel(false); onLabelChange(label) }}
+            onKeyDown={e => { if (e.key === 'Enter') { setEditLabel(false); onLabelChange(label) } }}
+            className="flex-1 text-sm font-medium text-slate-700 bg-transparent border-b border-blue-400 focus:outline-none"
+          />
+        ) : (
+          <span
+            className="flex-1 text-sm font-medium text-slate-700 cursor-pointer hover:text-blue-600"
+            onClick={() => setEditLabel(true)}
+          >
+            {account.label}
+          </span>
+        )}
+        <span className="text-[11px] text-slate-400">{cookieCount} cookies</span>
+        <button onClick={onDelete} className="p-1 text-slate-300 hover:text-red-500 transition-colors">
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+      <textarea
+        value={content}
+        onChange={e => setContent(e.target.value)}
+        placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	..."
+        rows={8}
+        className="w-full px-3 py-2 text-[11px] font-mono bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none text-slate-700"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+          Save
+        </button>
+        <button
+          onClick={() => setContent('')}
+          className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [apiKeys, setApiKeys] = useState<{ gemini: ApiKey[]; tts: ApiKey[] } | null>(null)
+  const [cookieAccounts, setCookieAccounts] = useState<CookieAccount[]>([])
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<TabId>('audio')
@@ -81,11 +170,12 @@ export default function SettingsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [cfgRes, keysRes] = await Promise.all([
-        fetch('/api/config'), fetch('/api/config?type=api-keys'),
+      const [cfgRes, keysRes, cookieRes] = await Promise.all([
+        fetch('/api/config'), fetch('/api/config?type=api-keys'), fetch('/api/cookies'),
       ])
       setConfig(await cfgRes.json())
       setApiKeys(await keysRes.json())
+      setCookieAccounts(await cookieRes.json())
     } catch { toast.error('Failed to load config') }
     finally { setLoading(false) }
   }, [])
@@ -104,6 +194,39 @@ export default function SettingsPage() {
       else toast.error('Failed to save config')
     } catch { toast.error('Network error') }
     finally { setSaving(false) }
+  }
+
+  const addCookieAccount = async () => {
+    const res = await fetch('/api/cookies', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: `Account ${cookieAccounts.length + 1}`, content: '' }),
+    })
+    const newAcc = await res.json()
+    setCookieAccounts(prev => [...prev, newAcc])
+  }
+
+  const updateCookieAccount = async (id: string, patch: Partial<CookieAccount>) => {
+    setCookieAccounts(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a))
+    await fetch('/api/cookies', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...patch }),
+    })
+  }
+
+  const saveCookieContent = async (id: string, content: string) => {
+    await fetch('/api/cookies', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, content }),
+    })
+    toast.success('Cookies saved!')
+  }
+
+  const deleteCookieAccount = async (id: string) => {
+    await fetch('/api/cookies', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    setCookieAccounts(prev => prev.filter(a => a.id !== id))
   }
 
   const resetQuota = async (service: string, name: string) => {
@@ -417,6 +540,42 @@ export default function SettingsPage() {
                     <NativeInput type="number" value={config.upload.timeout} onChange={v => upd('upload.timeout', +v)} />
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─ Cookies ─ */}
+          {tab === 'cookies' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Cookie className="w-3.5 h-3.5 text-slate-400" />
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">YouTube Cookie Accounts</p>
+                <span className="ml-auto text-[11px] text-slate-400">{cookieAccounts.filter(a => a.enabled).length} / {cookieAccounts.length} enabled</span>
+                <button
+                  onClick={addCookieAccount}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                >
+                  + Add Account
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Mỗi account là một tài khoản YouTube khác nhau. Khi crawl, hệ thống sẽ rotate qua các account đang enabled.
+                Dùng extension <strong>Cookie-Editor</strong> để export cookies từ trình duyệt sau khi đăng nhập YouTube.
+              </p>
+              {cookieAccounts.length === 0 && (
+                <p className="text-center text-sm text-slate-400 py-8">Chưa có account nào. Nhấn &quot;+ Add Account&quot; để thêm.</p>
+              )}
+              <div className="space-y-4">
+                {cookieAccounts.map((acc) => (
+                  <CookieAccountCard
+                    key={acc.id}
+                    account={acc}
+                    onToggle={(enabled) => updateCookieAccount(acc.id, { enabled })}
+                    onLabelChange={(label) => updateCookieAccount(acc.id, { label })}
+                    onSave={(content) => saveCookieContent(acc.id, content)}
+                    onDelete={() => deleteCookieAccount(acc.id)}
+                  />
+                ))}
               </div>
             </div>
           )}

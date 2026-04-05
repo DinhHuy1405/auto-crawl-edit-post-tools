@@ -3,6 +3,27 @@ import { ROOT_DIR } from '@/lib/config'
 import fs from 'fs'
 import path from 'path'
 
+export async function POST(req: NextRequest) {
+  try {
+    const formData = await req.formData()
+    const file = formData.get('file') as File | null
+    if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
+
+    const ext = path.extname(file.name) || '.jpg'
+    const filename = `upload_${Date.now()}${ext}`
+    const saveDir = path.join(ROOT_DIR, 'temp-images', 'uploads')
+    fs.mkdirSync(saveDir, { recursive: true })
+    const savePath = path.join(saveDir, filename)
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+    fs.writeFileSync(savePath, buffer)
+
+    return NextResponse.json({ path: savePath, name: file.name, filename })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const filePath = req.nextUrl.searchParams.get('path')

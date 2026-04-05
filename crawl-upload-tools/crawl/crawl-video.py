@@ -357,18 +357,51 @@ def rename_vtt_to_srt(folder_path, safe_title):
         except Exception as e:
             print(f"Không đổi tên hoặc clean được {vtt_file} sang .srt: {e}")
 
+_cookie_index = [0]  # mutable để rotate giữa các lần gọi
+
+def get_enabled_cookie_files():
+    """Load danh sách cookie files đang enabled từ cookies/accounts.json"""
+    cookies_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookies')
+    accounts_file = os.path.join(cookies_dir, 'accounts.json')
+    # Fallback: cookie.txt cũ nếu chưa migrate
+    legacy = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookie.txt')
+    if not os.path.exists(accounts_file):
+        return [legacy] if os.path.exists(legacy) else []
+    try:
+        with open(accounts_file, 'r', encoding='utf-8') as f:
+            accounts = json.load(f)
+        files = []
+        for acc in accounts:
+            if acc.get('enabled', True):
+                fp = os.path.join(cookies_dir, f"cookie-{acc['id']}.txt")
+                if os.path.exists(fp):
+                    files.append(fp)
+        return files if files else ([legacy] if os.path.exists(legacy) else [])
+    except Exception as e:
+        print(f"⚠️ Lỗi load accounts.json: {e}")
+        return [legacy] if os.path.exists(legacy) else []
+
+def get_next_cookie():
+    """Round-robin qua các cookie files enabled"""
+    files = get_enabled_cookie_files()
+    if not files:
+        return None
+    idx = _cookie_index[0] % len(files)
+    _cookie_index[0] = (idx + 1) % len(files)
+    return files[idx]
+
 def download_video_and_transcript(url, title, video_id, date_folder, jd_device=None):
     """Download YouTube video qua JDownloader hoặc fallback yt-dlp"""
     safe_title = sanitize_filename(title)
     folder_name = f"{safe_title} [{video_id}]"
     save_path = os.path.join(date_folder, folder_name)
     os.makedirs(save_path, exist_ok=True)
-    
+
     print(f"📥 Đang tải: {title}")
-    
+
     success = False
     package_name = None
-    
+
     # Strategy 1: Gửi qua JDownloader nếu có
     if not success and jd_device:
         try:
@@ -379,12 +412,12 @@ def download_video_and_transcript(url, title, video_id, date_folder, jd_device=N
                 print(f"✅ Đã gửi JDownloader: {title}")
         except Exception as e:
             print(f"⚠️ Lỗi JDownloader: {str(e)[:100]}")
-    
+
     # Strategy 2: Fallback dùng yt-dlp subprocess
     if not success:
         try:
             print(f"  🔄 Fallback yt-dlp...")
-            cmd = [
+            base_cmd = [
                 'yt-dlp',
                 '--no-warnings',
                 '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
@@ -396,27 +429,38 @@ def download_video_and_transcript(url, title, video_id, date_folder, jd_device=N
                 '--retries', '3',
                 '--socket-timeout', '15',
                 '--fragment-retries', '5',
-                # Tải subtitle tiếng Việt (auto-generated nếu không có manual)
                 '--write-sub',
                 '--write-auto-sub',
                 '--sub-lang', 'vi',
                 '--sub-format', 'vtt',
-                ]
-            cmd.append(url)
-            
+            ]
+            cmd = base_cmd + [url]
+
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             if result.returncode == 0:
                 print(f"✅ Đã tải xong (yt-dlp): {title}")
                 success = True
             else:
-                error_msg = result.stderr.split('\n')[0][:100]
-                print(f"⚠️ Lỗi yt-dlp: {error_msg}")
+                error_msg = result.stderr.strip()[:300]
+                print(f"⚠️ Lỗi yt-dlp (no cookies): {error_msg}")
+                # Retry với cookies nếu lỗi age-restricted / login required
+                if any(kw in error_msg for kw in ['Sign in', 'age', 'login', 'private', 'members']):
+                    cookie_path = get_next_cookie()
+                    if cookie_path:
+                        print(f"  🍪 Thử lại với cookies ({os.path.basename(cookie_path)})...")
+                        cmd2 = base_cmd + ['--cookies', cookie_path, url]
+                        result2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=300)
+                        if result2.returncode == 0:
+                            print(f"✅ Đã tải xong (yt-dlp + cookies): {title}")
+                            success = True
+                        else:
+                            print(f"⚠️ Lỗi yt-dlp + cookies: {result2.stderr.strip()[:200]}")
         except Exception as e:
             print(f"⚠️ Lỗi fallback: {str(e)[:100]}")
-    
+
     if not success:
         print(f"⏭️ Bỏ qua - không thể tải được")
-        
+
     return package_name
 
 def download_videos_of_channels(api_key, channels, target_date, min_duration=180, root_save_folder="", jd_device=None):

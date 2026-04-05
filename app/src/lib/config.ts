@@ -12,6 +12,8 @@ export const PATHS = {
   crawlDir: path.join(ROOT_DIR, 'crawl-upload-tools'),
   uploadDatabase: path.join(ROOT_DIR, 'social-upload-tools', 'videos-database.json'),
   socialConfig: path.join(ROOT_DIR, 'social-upload-tools', 'config.json'),
+  cookieFile: path.join(ROOT_DIR, 'crawl-upload-tools', 'crawl', 'cookie.txt'),
+  cookiesDir: path.join(ROOT_DIR, 'crawl-upload-tools', 'crawl', 'cookies'),
 }
 
 export interface AppConfig {

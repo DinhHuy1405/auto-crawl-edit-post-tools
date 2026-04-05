@@ -182,14 +182,14 @@
         "id": "BLV Trung Đàm Discovery",
         "label": "BLV Trung Đàm Discovery",
         "channelId": "",
-        "enabled": true
+        "enabled": false
       }
     ]
   },
   "upload": {
     "platforms": [
-      "facebook",
-      "threads"
+      "tiktok",
+      "facebook"
     ],
     "showBrowser": true,
     "timeout": 30000

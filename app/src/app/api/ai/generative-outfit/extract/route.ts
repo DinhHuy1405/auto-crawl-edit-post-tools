@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { sourceImagePath, runId } = body
+    const { sourceImagePath, runId, mode = 'extract-product' } = body
 
     if (!sourceImagePath || !runId) {
       return NextResponse.json({ error: 'Missing sourceImagePath or runId' }, { status: 400 })
@@ -24,12 +24,14 @@ export async function POST(req: NextRequest) {
           controller.enqueue(`data: ${JSON.stringify({ type, ...data })}\n\n`)
         }
 
+        const outName = mode === 'extract-model' ? 'model-extracted.jpg' : 'product-extracted.png'
+
         // Spawn generative-outfit.mjs with extract mode
         const proc = spawn('node', [
           resolve(process.cwd(), '../../../edit-video/generative-outfit.mjs'),
-          '--mode', 'extract',
+          '--mode', mode,
           '--input', sourceImagePath,
-          '--output', `./temp-images/${runId}/outfit-extracted.png`,
+          '--output', `./temp-images/${runId}/${outName}`,
           '--run-id', runId
         ])
 

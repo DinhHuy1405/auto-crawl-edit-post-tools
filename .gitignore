@@ -37,3 +37,10 @@ edit-video/assets/**/*.jpg
 edit-video/assets/f.mp4
 edit-video/assets/sound.mp3
 edit-video/assets/f/
+temp-clips/
+temp-images/
+crawl-upload-tools/crawl/cookies/
+app/src/app/ai-creator/
+app/src/app/api/ai-creator/
+.claude/
+.clone/

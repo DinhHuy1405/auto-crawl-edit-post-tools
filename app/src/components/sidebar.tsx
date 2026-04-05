@@ -5,12 +5,12 @@ import { LayoutDashboard, GitBranch, Film, CloudUpload, Archive, Settings } from
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { href: '/',         label: 'Dashboard',    icon: LayoutDashboard },
-  { href: '/workflow', label: 'Workflow',      icon: GitBranch },
-  { href: '/editor',   label: 'Editor',       icon: Film },
-  { href: '/upload',   label: 'Uploads',      icon: CloudUpload },
-  { href: '/assets',   label: 'Assets',       icon: Archive },
-  { href: '/settings', label: 'Settings',     icon: Settings },
+  { href: '/',          label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/workflow',  label: 'Workflow',  icon: GitBranch },
+  { href: '/editor',    label: 'Editor',    icon: Film },
+  { href: '/upload',    label: 'Uploads',   icon: CloudUpload },
+  { href: '/assets',    label: 'Assets',    icon: Archive },
+  { href: '/settings',  label: 'Settings',  icon: Settings },
 ]
 
 export function Sidebar() {
