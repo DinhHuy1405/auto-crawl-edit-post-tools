@@ -49,9 +49,12 @@ export async function POST(req: NextRequest) {
           '--model', resolvedModel,
           '--outfit', resolvedOutfit,
           '--aspect-ratio', aspectRatio || '9:16',
-          '--output-dir', `./temp-images/${runId}`,
+          '--output-dir', \`./temp-images/${runId}\`,
           '--run-id', runId
         ]
+        
+        if (body.aiEngine === 'api') { args.push('--engine', 'api') }
+        if (body.aiContextMode === 'background') { args.push('--context-mode', 'background') }
 
         // Add angle prompts
         args.push('--prompts')

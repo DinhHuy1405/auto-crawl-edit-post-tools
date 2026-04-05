@@ -766,6 +766,9 @@ export default function WorkflowPage() {
             maxAttemptsPerAngle: 2,
             styleHint: 'professional fashion photography, studio lighting, clean background',
             runId: `${runId}_tryon_${i}`,
+            aiEngine,
+            aiContextMode,
+            aiOutputTarget,
           }),
           signal: ctrl.signal,
         })
