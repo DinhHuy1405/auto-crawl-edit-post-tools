@@ -93,12 +93,22 @@ async function generateVoice(content, retryCount = 0, maxRetries = 4) {
                              error?.error?.message?.includes('quota') ||
                              error?.message?.includes('Quota exceeded');
         
-        if (isQuotaError && retryCount < maxRetries) {
-            console.log(`⚠️  TTS API quota exceeded, switching to next key... (attempt ${retryCount + 1}/${maxRetries})`);
-            markQuotaExceeded('tts');
+        const isUnavailableError = error?.error?.code === 503 || error?.status === 503 ||
+                                   error?.error?.status === 'UNAVAILABLE' ||
+                                   error?.error?.message?.includes('experiencing high demand') ||
+                                   error?.error?.message?.toLowerCase().includes('temporarily unavailable');
+
+        if ((isQuotaError || isUnavailableError) && retryCount < maxRetries) {
+            if (isQuotaError) {
+                console.log(`⚠️  TTS API quota exceeded, switching to next key... (attempt ${retryCount + 1}/${maxRetries})`);
+                markQuotaExceeded('tts');
+            } else {
+                console.log(`⚠️  TTS API service unavailable (503), retrying in 5 seconds... (attempt ${retryCount + 1}/${maxRetries})`);
+            }
             
-            // Wait a bit before retrying
-            await new Promise(r => setTimeout(r, 1000));
+            // Wait a bit before retrying (longer for 503 usually)
+            const waitTime = isUnavailableError ? 5000 : 1000;
+            await new Promise(r => setTimeout(r, waitTime));
             return generateVoice(content, retryCount + 1, maxRetries);
         }
         

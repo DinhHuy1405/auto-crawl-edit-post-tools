@@ -106,11 +106,24 @@ async function generateImages(prompt, apiKey, retryCount = 0, maxRetries = 3) {
     return savedPaths
   } catch (err) {
     const isQuota = err.message?.includes('quota') || err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED')
-    if (isQuota) {
-      markQuotaExceeded('gemini')
+    const isUnavailableError = err.message?.includes('503') || err.message?.includes('UNAVAILABLE') || err.message?.includes('experiencing high demand') || err.message?.toLowerCase().includes('temporarily unavailable')
+    
+    if (isQuota || isUnavailableError) {
+      if (isQuota) {
+        markQuotaExceeded('gemini')
+      }
+      
       if (retryCount < maxRetries) {
-        console.log(`⚠️  Quota exceeded, retrying with next key (attempt ${retryCount + 1}/${maxRetries})...`)
-        const newKey = getActiveKeyValue('gemini')
+        if (isQuota) {
+          console.log(`⚠️  Quota exceeded, retrying with next key (attempt ${retryCount + 1}/${maxRetries})...`)
+        } else {
+          console.log(`⚠️  API service unavailable (503), retrying in 5 seconds... (attempt ${retryCount + 1}/${maxRetries})`)
+        }
+        
+        const newKey = isQuota ? getActiveKeyValue('gemini') : apiKey;
+        const waitTime = isUnavailableError ? 5000 : 1000;
+        
+        await new Promise(r => setTimeout(r, waitTime));
         return generateImages(prompt, newKey, retryCount + 1, maxRetries)
       }
     }

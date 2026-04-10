@@ -55,19 +55,25 @@ async function launchBrowser() {
   const platform = os.platform()
   let userDataDir, executablePath
 
+  let chromeParentDir
   if (platform === 'darwin') {
-    userDataDir    = join(os.homedir(), 'Library/Application Support/Google/Chrome/Default')
+    chromeParentDir = join(os.homedir(), 'Library/Application Support/Google/Chrome')
+    userDataDir    = join(chromeParentDir, 'Default')
     executablePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
   } else if (platform === 'win32') {
-    userDataDir    = join(process.env.LOCALAPPDATA ?? join(os.homedir(), 'AppData/Local'), 'Google/Chrome/User Data/Default')
+    chromeParentDir = join(process.env.LOCALAPPDATA ?? join(os.homedir(), 'AppData/Local'), 'Google/Chrome/User Data')
+    userDataDir    = join(chromeParentDir, 'Default')
     executablePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
   } else {
     throw new Error('Unsupported platform: ' + platform)
   }
 
-  // Xoá singleton lock để tránh conflict nếu Chrome đang mở
-  for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
-    try { unlinkSync(join(userDataDir, f)) } catch {}
+  // Xoá singleton lock ở CẢ HAI nơi: thư mục Chrome gốc VÀ profile Default
+  // Chrome đặt lock ở chromeParentDir, Playwright đặt lock ở userDataDir
+  for (const dir of [chromeParentDir, userDataDir]) {
+    for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
+      try { unlinkSync(join(dir, f)) } catch {}
+    }
   }
 
   const browser = await chromium.launchPersistentContext(userDataDir, {
@@ -586,6 +592,8 @@ async function generateOne(page, modelPath, outfitPath, prompt, outputPath, maxA
 if (mode === 'compose') {
   const modelPath   = getArg('--model') || getArg('--background')
   const outfitPath  = getArg('--outfit') || getArg('--extracted-outfit')
+  const engine      = getArg('--engine', 'browser')
+  const contextMode = getArg('--context-mode', 'model')
   const prompts     = getMultiArg('--prompts')
   const outputDir   = getArg('--output-dir', `./temp-images/${runId}`)
   const maxAttempts = parseInt(getArg('--max-attempts', '2'))
@@ -622,17 +630,31 @@ if (mode === 'compose') {
 
       // Build prompt đầy đủ
       const fullPrompt = [
-        'Ảnh 1 là người mẫu, Ảnh 2 là trang phục sản phẩm.',
-        'Hãy tạo ảnh người mẫu MẶC trang phục từ Ảnh 2.',
-        'Giữ nguyên: khuôn mặt, vóc dáng của người mẫu.',
-        'Giữ nguyên: màu sắc, chi tiết, logo của trang phục.',
+        ...(contextMode === 'background' ? [
+          'Ảnh 1 là phông nền (background), Ảnh 2 là trang phục/sản phẩm.',
+          'Hãy đặt Ảnh 2 vào trong Ảnh 1 sao cho tự nhiên nhất, đúng ánh sáng và tỉ lệ.',
+          'Giữ nguyên: bối cảnh của phông nền ở Ảnh 1.',
+          'Giữ nguyên: màu sắc, chi tiết của Ảnh 2.',
+        ] : [
+          'Ảnh 1 là người mẫu, Ảnh 2 là trang phục sản phẩm.',
+          'Hãy tạo ảnh người mẫu MẶC trang phục từ Ảnh 2.',
+          'Giữ nguyên: khuôn mặt, vóc dáng của người mẫu.',
+          'Giữ nguyên: màu sắc, chi tiết, logo của trang phục.',
+        ]),
         styleHint ? `Phong cách: ${styleHint}.` : '',
         anglePrompt,
         'Tỉ lệ ảnh dọc 9:16. Chất lượng cao, ánh sáng studio chuyên nghiệp.',
       ].filter(Boolean).join('\n')
 
       try {
-        const success = await generateOne(page, modelPath, outfitPath, fullPrompt, outputPath, maxAttempts)
+        let success = false
+        
+        if (engine === 'api') {
+          console.log(`⚠️ Gemini API SDK hiện không hỗ trợ Image-to-Image trực tiếp. Đang trả về lỗi để hệ thống dự phòng (nếu có).`)
+          throw new Error('API_NOT_STABLE_FOR_IMAGES_YET')
+        } else {
+          success = await generateOne(page, modelPath, outfitPath, fullPrompt, outputPath, maxAttempts)
+        }
 
         if (success) {
           const sizeKb = Math.round(readFileSync(outputPath).length / 1024)
@@ -704,13 +726,9 @@ else if (mode === 'extract-product' || mode === 'extract-model' || mode === 'ext
   // Phân biệt prompt theo mode
   let prompt = ''
   if (mode === 'extract-product' || mode === 'extract') {
-    prompt = `Hãy tách sản phẩm quần áo/phụ kiện ra khỏi nền trong ảnh này.
-Chỉ giữ lại phần trang phục, và đặt nó trên một nền trắng tinh (solid white background).
-Giữ nguyên chính xác 100% màu sắc, chi tiết, logo và kết cấu của sản phẩm.`
+    prompt = `Hãy tách sản phẩm quần áo hoặc phụ kiện ra khỏi nền. Giữ lại toàn bộ sản phẩm: quần áo, phụ kiện, logo, chi tiết. Loại bỏ: người mặc, tay, chân, nền cũ. Đặt sản phẩm trên nền trắng sạch. Giữ nguyên 100% màu sắc gốc, texture, đường viền rõ nét. Tạo ảnh output sạch sẽ, sẵn sàng dùng.`
   } else if (mode === 'extract-model') {
-    prompt = `Đây là ảnh người mẫu tham khảo. 
-Hãy tạo ra một bảng tham khảo nhân vật (character sheet) thể hiện người mẫu này ở các góc mặt khác nhau (trực diện, nghiêng 3/4, nhìn ngang) trên một nền trắng tinh.
-Giữ nguyên chính xác các đường nét khuôn mặt, kiểu tóc và thần thái của người mẫu này.`
+    prompt = `Hãy tạo character sheet người mẫu này với 3 góc nhìn: (1) Mặt thẳng, nhìn camera, toàn thân. (2) Ngoại cảnh 3/4 phải. (3) Ngoại cảnh 3/4 trái. Nền trắng sạch, đồng nhất. Giữ nguyên: khuôn mặt, mắt, tóc, da. Tư thế tự nhiên, ánh sáng studio chuyên nghiệp. Tạo ảnh output rõ nét.`
   }
 
   let browser

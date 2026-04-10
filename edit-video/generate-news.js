@@ -83,12 +83,22 @@ ${text}
                              error?.error?.message?.includes('quota') ||
                              error?.error?.message?.includes('exceeded');
         
-        if (isQuotaError && retryCount < maxRetries) {
-            console.log(`⚠️  API quota exceeded, switching to next key... (attempt ${retryCount + 1}/${maxRetries})`);
-            markQuotaExceeded('gemini');
+        const isUnavailableError = error?.error?.code === 503 || error?.status === 503 ||
+                                   error?.error?.status === 'UNAVAILABLE' ||
+                                   error?.error?.message?.includes('experiencing high demand') ||
+                                   error?.error?.message?.toLowerCase().includes('temporarily unavailable');
+
+        if ((isQuotaError || isUnavailableError) && retryCount < maxRetries) {
+            if (isQuotaError) {
+                console.log(`⚠️  API quota exceeded, switching to next key... (attempt ${retryCount + 1}/${maxRetries})`);
+                markQuotaExceeded('gemini');
+            } else {
+                console.log(`⚠️  API service unavailable (503), retrying in 5 seconds... (attempt ${retryCount + 1}/${maxRetries})`);
+            }
             
-            // Wait a bit before retrying
-            await new Promise(r => setTimeout(r, 1000));
+            // Wait a bit before retrying (longer for 503 usually)
+            const waitTime = isUnavailableError ? 5000 : 1000;
+            await new Promise(r => setTimeout(r, waitTime));
             return generateNewsFromText(text, retryCount + 1, maxRetries);
         }
         

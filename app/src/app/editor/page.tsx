@@ -39,6 +39,13 @@ interface FxConfig {
   vignette: boolean    // vignette overlay
 }
 const DEFAULT_FX: FxConfig = { brightness: 0, contrast: 1, saturation: 1, speed: 1, fadeInDur: 0, fadeOutDur: 0, vignette: false }
+
+const AI_TRANSITIONS = [
+  { id: 'fade', label: 'Crossfade', desc: 'Mờ dần chuyển cảnh' },
+  { id: 'slide', label: 'Slide in', desc: 'Trượt từ phải sang' },
+  { id: 'zoom', label: 'Zoom out', desc: 'Thu nhỏ cảnh cũ' },
+  { id: 'none', label: 'None', desc: 'Chuyển cảnh tức thì' }
+]
 interface VideoItem { id: string; title: string; path: string }
 interface LayersVis { mainVideo: boolean; templateVideo: boolean; blurZones: boolean; title: boolean; logo: boolean }
 
@@ -814,8 +821,8 @@ function SourceModePanel({ config, onChange }:{ config:SourceModeConfig; onChang
           <div className="grid grid-cols-2 gap-2">
             <NumField label="Min clip" value={config.randomClips.minClipSec} onChange={v=>setSub('randomClips',{minClipSec:v})} min={2} max={60} unit="s"/>
             <NumField label="Max clip" value={config.randomClips.maxClipSec} onChange={v=>setSub('randomClips',{maxClipSec:v})} min={2} max={120} unit="s"/>
-            <NumField label="Avoid start" value={config.randomClips.avoidFirstSec} onChange={v=>setSub('randomClips',{avoidFirstSec:v})} min={0} max={300} unit="s"/>
-            <NumField label="Avoid end" value={config.randomClips.avoidLastSec} onChange={v=>setSub('randomClips',{avoidLastSec:v})} min={0} max={120} unit="s"/>
+            <NumField label="Avoid start" value={config.randomClips.avoidFirstSec} onChange={v=>setSub('randomClips',{avoidFirstSec:v})} min={0} max={3600} unit="s"/>
+            <NumField label="Avoid end" value={config.randomClips.avoidLastSec} onChange={v=>setSub('randomClips',{avoidLastSec:v})} min={0} max={3600} unit="s"/>
           </div>
           <p className="text-[9px] text-violet-600 bg-violet-50 rounded-lg px-2 py-1.5 border border-violet-100">Clips ngẫu nhiên, không trùng, ghép bằng FFmpeg concat filter.</p>
         </div>}
@@ -929,7 +936,7 @@ export default function EditorPage() {
   const [workflowMode,setWorkflowMode]=useState<'news'|'clip'|'ai'>('news')
 
   // ── AI Generative Outfit: 2-Phase Flow ────────────────────────────────────
-  const [aiOutfitPhase, setAiOutfitPhase]=useState<'idle'|'extracting'|'generating'|'done'>('idle')
+  const [aiOutfitPhase, setAiOutfitPhase]=useState<'idle'|'extracting'|'generating'|'done'|'slideshow'>('idle')
   const [aiSourceImagePath, setAiSourceImagePath]=useState<string>('')  // original outfit+bg
   const [aiExtractedOutfitPath, setAiExtractedOutfitPath]=useState<string>('')  // cleaned PNG
   const [aiBackgroundImagePath, setAiBackgroundImagePath]=useState<string>('')
@@ -942,7 +949,7 @@ export default function EditorPage() {
   ])
   const [aiAngleInput, setAiAngleInput]=useState('')
   const [aiExtractedPreview, setAiExtractedPreview]=useState<string|null>(null)
-  const [aiGeneratedImages, setAiGeneratedImages]=useState<{id:string, path:string, angle:string, timestamp:number}[]>([])
+  const [aiGeneratedImages, setAiGeneratedImages]=useState<{id:string, path:string, angle:string, duration:number, timestamp:number}[]>([])
   const [aiCurrentAngleIndex, setAiCurrentAngleIndex]=useState(0)
   const [aiGenerationRunning, setAiGenerationRunning]=useState(false)
   const [aiExtractionRunning, setAiExtractionRunning]=useState(false)
@@ -951,6 +958,14 @@ export default function EditorPage() {
   const [aiEnhancePrompts, setAiEnhancePrompts]=useState(false)
   const [aiStyleHint, setAiStyleHint]=useState('professional product photography')
   const [aiRunId, setAiRunId]=useState(`run_${Date.now()}`)
+  const [aiTransition, setAiTransition]=useState('fade')
+  const [aiImageDuration, setAiImageDuration]=useState(3)
+
+  // AI Slideshow overlays
+  const [aiTextOverlay, setAiTextOverlay]=useState('')
+  const [aiTextPosition, setAiTextPosition]=useState<'top'|'center'|'bottom'>('bottom')
+  const [aiAddLogo, setAiAddLogo]=useState(false)
+  const [aiImageInput, setAiImageInput]=useState('')
 
   // Clip mode state
   const [clipAddFrame,setClipAddFrame]=useState(false)
@@ -1000,7 +1015,7 @@ export default function EditorPage() {
     setSaving(true)
     try{
       const {blurZones:_bz,...configLayout}=((config?.layout||{}) as Record<string,unknown>)
-      const next={...config,layout:{...configLayout,...layout,logoScale:`${layout.logoW}:${layout.logoH}`},audio:{...(config?.audio as object||{}),volumes:audio},sourceMode,fx,blurZones}
+      const next={...config,layout:{...configLayout,...layout,logoScale:`${layout.logoW}:${layout.logoH}`},audio:{...config?.audio,volumes:audio},sourceMode,fx,blurZones}
       await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)})
       setConfig(next);toast.success('Saved!')
     }catch{toast.error('Failed')}finally{setSaving(false)}
@@ -1414,15 +1429,15 @@ export default function EditorPage() {
             {/* Phase Indicator Bar */}
             <div className="shrink-0 flex items-center gap-3 px-4 py-2 bg-white border-b border-slate-200">
               <div className="flex items-center gap-2">
-                {(['extract','compose','results'] as const).map((p, idx)=>(
+                {(['extract','compose','slideshow'] as const).map((p, idx)=>(
                   <div key={p} className="flex items-center gap-2">
                     <div className={cn('w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold',
-                      (p==='extract' && (aiOutfitPhase==='extracting' || aiOutfitPhase==='generating' || aiOutfitPhase==='done')) ||
-                      (p==='compose' && (aiOutfitPhase==='generating' || aiOutfitPhase==='done')) ||
-                      (p==='results' && aiOutfitPhase==='done')
+                      (p==='extract' && (aiOutfitPhase==='extracting' || aiOutfitPhase==='generating' || aiOutfitPhase==='done' || aiOutfitPhase==='slideshow')) ||
+                      (p==='compose' && (aiOutfitPhase==='generating' || aiOutfitPhase==='done' || aiOutfitPhase==='slideshow')) ||
+                      (p==='slideshow' && aiOutfitPhase==='slideshow')
                         ? 'bg-purple-500 text-white' : 'bg-slate-200 text-slate-500'
                     )}>
-                      {p==='extract' ? '1' : p==='compose' ? '2' : '3'}
+                      {idx+1}
                     </div>
                     <span className="text-[11px] font-bold text-slate-600 capitalize">{p}</span>
                     {idx < 2 && <div className="w-6 h-px bg-slate-300 mx-1"/>}
@@ -1440,7 +1455,139 @@ export default function EditorPage() {
 
             {/* Canvas Area */}
             <div className="flex-1 overflow-auto flex items-center justify-center p-6" style={{background:'#f1f5f9'}}>
-              {aiOutfitPhase==='idle' || !aiExtractedOutfitPath ? (
+              {aiOutfitPhase==='slideshow' ? (
+                /* PHASE 3: SLIDESHOW EDITOR */
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden w-full max-w-4xl flex flex-col">
+                  <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="w-5 h-5 text-violet-500" />
+                      <span className="text-base font-semibold text-slate-800">Image Slideshow Editor</span>
+                      <span className="text-xs text-slate-400 ml-2">Ghép nhiều ảnh thành video · set duration từng ảnh · hiệu ứng chuyển cảnh</span>
+                    </div>
+                    <button onClick={()=>setAiOutfitPhase('extracting')} className="text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors">
+                      ← Back to Compose
+                    </button>
+                  </div>
+                  
+                  <div className="p-6 grid grid-cols-[1fr_260px] gap-8">
+                    {/* Left: Image list */}
+                    <div className="flex flex-col min-h-0">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="text-sm font-semibold text-slate-700">Danh sách ảnh</label>
+                        <span className="text-[10px] text-slate-400 uppercase tracking-widest">{aiGeneratedImages.length} items</span>
+                      </div>
+                      
+                      <div className="flex gap-2 mb-4 shrink-0">
+                        <input
+                          value={aiImageInput}
+                          onChange={e => setAiImageInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && aiImageInput.trim()) {
+                              setAiGeneratedImages(prev => [...prev, { id: `img_${Date.now()}`, path: aiImageInput.trim(), angle: 'Manual', duration: aiImageDuration, timestamp: Date.now() }])
+                              setAiImageInput('')
+                            }
+                          }}
+                          placeholder="URL ảnh hoặc đường dẫn file (hoặc dùng AI Generate)..."
+                          className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400/30 focus:border-violet-400 bg-slate-50"
+                        />
+                        <button
+                          onClick={() => { if (aiImageInput.trim()) { setAiGeneratedImages(prev => [...prev, { id: `img_${Date.now()}`, path: aiImageInput.trim(), angle: 'Manual', duration: aiImageDuration, timestamp: Date.now() }]); setAiImageInput('') } }}
+                          disabled={!aiImageInput.trim()}
+                          className="px-4 py-2 text-xs font-bold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-40 transition-colors shadow-sm">
+                          Thêm
+                        </button>
+                      </div>
+
+                      <div className="space-y-2 overflow-y-auto flex-1 pr-1 min-h-[300px]">
+                        {aiGeneratedImages.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-12 text-slate-300 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                            <ImageIcon className="w-12 h-12 mb-3 text-slate-200" />
+                            <p className="text-[13px] font-medium text-slate-500 mb-1">Chưa có ảnh nào để tạo slideshow</p>
+                            <p className="text-[11px] text-slate-400">Hãy thêm ảnh từ URL, uploads, hoặc dùng chế độ AI ở bước 2.</p>
+                          </div>
+                        ) : aiGeneratedImages.map((item, i) => (
+                          <div key={item.id} className="flex items-center gap-4 px-3 py-2 bg-white border border-slate-200 rounded-xl group hover:border-violet-300 transition-colors shadow-sm">
+                            <span className="w-6 h-6 rounded-md bg-violet-100 text-violet-700 text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                            
+                            <div className="w-12 h-12 rounded border border-slate-200 bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
+                              {item.path ? <img src={`/api/file?path=${encodeURIComponent(item.path)}`} alt={item.angle} className="w-full h-full object-cover"/> : <ImageIcon className="w-4 h-4 text-slate-300"/>}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-slate-700 truncate">{item.path.split('/').pop() || item.path}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">{item.angle}</p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-100">
+                              <button onClick={() => setAiGeneratedImages(prev => prev.map((it, idx) => idx === i ? { ...it, duration: Math.max(1, (it.duration||3) - 1) } : it))}
+                                className="w-5 h-5 rounded hover:bg-slate-200 text-slate-600 text-xs font-bold flex items-center justify-center transition-colors">-</button>
+                              <span className="text-xs font-mono w-6 text-center text-violet-700 font-bold">{item.duration||3}s</span>
+                              <button onClick={() => setAiGeneratedImages(prev => prev.map((it, idx) => idx === i ? { ...it, duration: Math.min(30, (it.duration||3) + 1) } : it))}
+                                className="w-5 h-5 rounded hover:bg-slate-200 text-slate-600 text-xs font-bold flex items-center justify-center transition-colors">+</button>
+                            </div>
+
+                            <button onClick={() => setAiGeneratedImages(prev => prev.filter((_, idx) => idx !== i))}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {aiGeneratedImages.length > 0 && (
+                        <div className="bg-slate-100 px-4 py-2.5 rounded-lg mt-4 flex items-center justify-between border border-slate-200">
+                          <span className="text-xs font-semibold text-slate-600">Tổng thời lượng ước tính</span>
+                          <span className="text-sm font-black text-violet-700 font-mono">
+                            {aiGeneratedImages.reduce((s, it) => s + (it.duration||3), 0)}s
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right: Overlays */}
+                    <div className="space-y-6 pt-2">
+                      {/* Text overlay */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-2.5">
+                          <Type className="w-4 h-4 text-slate-500" />
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Text Overlay</label>
+                        </div>
+                        <input
+                          value={aiTextOverlay}
+                          onChange={e => setAiTextOverlay(e.target.value)}
+                          placeholder="Nhập text chạy trên video..."
+                          className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400/40 focus:border-violet-400 bg-white shadow-sm"
+                        />
+                        <div className="flex gap-1.5 mt-2 bg-slate-100 p-1 rounded-lg">
+                          {(['top','center','bottom'] as const).map(pos => (
+                            <button key={pos} onClick={() => setAiTextPosition(pos)}
+                              className={cn('flex-1 py-1.5 rounded-md text-[10px] font-bold transition-all capitalize shadow-sm',
+                                aiTextPosition === pos ? 'bg-white text-violet-700' : 'bg-transparent text-slate-500 hover:text-slate-700')}>
+                              {pos}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Logo */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-2.5">
+                          <ImageIcon className="w-4 h-4 text-slate-500" />
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Watermark</label>
+                        </div>
+                        <button onClick={() => setAiAddLogo(v => !v)}
+                          className={cn('w-full flex justify-between items-center px-4 py-2.5 rounded-lg border-2 transition-all',
+                            aiAddLogo ? 'bg-violet-50 border-violet-400' : 'bg-white border-slate-200 hover:border-slate-300')}>
+                          <span className={cn('text-xs font-bold', aiAddLogo ? 'text-violet-700' : 'text-slate-600')}>Hiển thị Logo</span>
+                          <div className={cn('w-8 h-4 rounded-full transition-colors flex items-center px-0.5', aiAddLogo ? 'bg-violet-500' : 'bg-slate-300')}>
+                            <div className={cn('w-3 h-3 bg-white rounded-full transition-transform', aiAddLogo ? 'translate-x-4' : 'translate-x-0')} />
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : aiOutfitPhase==='idle' || !aiExtractedOutfitPath ? (
                 /* PHASE 1: EXTRACTION */
                 <div className="max-w-md w-full space-y-4">
                   <div className="text-center mb-4">
@@ -1607,8 +1754,8 @@ export default function EditorPage() {
                           const line=part.replace(/^data: /,'').trim();if(!line)continue
                           try{const ev=JSON.parse(line);
                             if(ev.type==='progress')setAiCurrentAngleIndex(ev.angleIndex)
-                            if(ev.type==='image-ready'){setAiGeneratedImages(p=>[...p,{id:`img_${Date.now()}_${ev.imageIndex}`,path:ev.imagePath,angle:ev.anglePrompt,timestamp:Date.now()}])}
-                            if(ev.type==='done'){if(ev.success){setAiOutfitPhase('done');toast.success('Generation complete!')}else{toast.error(ev.error)}}
+                            if(ev.type==='image-ready'){setAiGeneratedImages(p=>[...p,{id:`img_${Date.now()}_${ev.imageIndex}`,path:ev.imagePath,angle:ev.anglePrompt,duration:aiImageDuration,timestamp:Date.now()}])}
+                            if(ev.type==='done'){if(ev.success){setAiOutfitPhase('slideshow');toast.success('Generation complete!')}else{toast.error(ev.error)}}
                           }catch{}
                         }
                       }
@@ -1787,6 +1934,41 @@ export default function EditorPage() {
                     </div>
                   </div>
                 </div>
+
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Slideshow Settings</p>
+                  <div className="space-y-3 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                    {/* Transitions */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1.5">
+                        <span className="text-[9px] font-semibold text-slate-600">Transition Effect</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {AI_TRANSITIONS.map(t => (
+                          <button key={t.id} onClick={() => setAiTransition(t.id)}
+                            className={cn('px-2 py-1.5 text-[9px] font-medium rounded border transition-colors',
+                              aiTransition === t.id ? 'bg-purple-500 border-purple-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-purple-300')}>
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[8px] text-slate-400 mt-1">
+                        {AI_TRANSITIONS.find(t => t.id === aiTransition)?.desc}
+                      </p>
+                    </div>
+
+                    {/* Duration per image */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[9px] font-semibold text-slate-600">Image duration</span>
+                        <span className="text-[10px] font-bold text-slate-700">{aiImageDuration}s</span>
+                      </div>
+                      <input type="range" min={1} max={10} step={0.5} value={aiImageDuration} onChange={e=>setAiImageDuration(+e.target.value)}
+                        className="w-full h-2 bg-slate-200 rounded-full"/>
+                    </div>
+                  </div>
+                </div>
+
                 <button onClick={runRender} disabled={aiGenerationRunning || aiGeneratedImages.length===0}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50 shadow-md"
                   style={{background:'linear-gradient(135deg,#a855f7,#9333ea)'}}>
@@ -2138,7 +2320,7 @@ export default function EditorPage() {
                               className="flex-1 bg-transparent text-[11px] font-semibold text-slate-700 focus:outline-none"
                               onClick={e=>e.stopPropagation()}/>
                             <span className="text-[9px] text-slate-400 font-mono">σ={z.sigma}</span>
-                            {blurZones.length>1&&<button onClick={e=>{e.stopPropagation();removeBlurZone(z.id)}} className="text-slate-300 hover:text-red-500 transition-colors p-0.5"><Trash2 className="w-3 h-3"/></button>}
+                            <button onClick={e=>{e.stopPropagation();removeBlurZone(z.id)}} className="text-slate-300 hover:text-red-500 transition-colors p-0.5"><Trash2 className="w-3 h-3"/></button>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <NumField label="X" value={z.x} onChange={v=>updateBlurZone(z.id,{x:v})}/>

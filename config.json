@@ -115,7 +115,7 @@
     "randomClips": {
       "minClipSec": 10,
       "maxClipSec": 20,
-      "avoidFirstSec": 360,
+      "avoidFirstSec": 60,
       "avoidLastSec": 30,
       "seed": null
     },

@@ -221,10 +221,17 @@ async function buildMainVideoSource(mainVideoPath, targetDuration) {
             const avoidFirst = sm.randomClips?.avoidFirstSec ?? 60;
             const avoidLast = sm.randomClips?.avoidLastSec ?? 30;
             let safeStart = avoidFirst;
-            if (safeStart >= totalDur) safeStart = 0;
             let safeEnd = totalDur - avoidLast;
-            if (safeEnd <= safeStart + minClip) safeEnd = totalDur;
-            if (safeEnd <= safeStart + minClip) safeEnd = safeStart + maxClip;
+
+            // Adjust if logic exceeds boundaries
+            if (safeStart >= totalDur - minClip) {
+                // Not enough video if we avoid start, so reduce avoidFirst
+                safeStart = Math.max(0, totalDur - Math.max(minClip, 30));
+            }
+            if (safeEnd <= safeStart + minClip) {
+                // Not enough video if we avoid end, so push safeEnd back
+                safeEnd = Math.min(totalDur, safeStart + maxClip);
+            }
 
             let remaining = targetDuration;
             let usedRanges = [];
@@ -327,43 +334,40 @@ async function generateFFmpegCommand(inputs, outputVideo, duration) {
         `[voice_trimmed]volume=${voiceVol}[processed_voice]`
     );
 
-    // 3. Template video with blur zones
+    // 3. Template video with blur zones (apply blur TO TEMPLATE, then overlay)
     const blurZones = Array.isArray(CONFIG.blurZones) ? CONFIG.blurZones : (Array.isArray(CONFIG.layout.blurZones) ? CONFIG.layout.blurZones : []);
     filterComplexParts.push(`[${tplIdx}:v]scale=${templateW}:${templateH}[scaled_template]`);
 
-    // Template should be composited first, then blur applied
-    filterComplexParts.push(`[trimmed_main_video][scaled_template]overlay=x=${templateX}:y=${templateY}[video_with_template_raw]`);
-
+    // Apply blur zones to template FIRST
     if (blurZones.length === 0) {
-        filterComplexParts.push(`[video_with_template_raw]null[video_with_template]`);
+        filterComplexParts.push(`[scaled_template]null[blurred_template]`);
     } else {
         const splitCount = blurZones.length + 1;
-        const splitLabels = [`[orig_composite]`, ...blurZones.map((_, i) => `[c_blur_in_${i}]`)].join('');
-        filterComplexParts.push(`[video_with_template_raw]split=${splitCount}${splitLabels}`);
-        
+        const splitLabels = [`[orig_template]`, ...blurZones.map((_, i) => `[blur_in_${i}]`)].join('');
+        filterComplexParts.push(`[scaled_template]split=${splitCount}${splitLabels}`);
+
         blurZones.forEach((zone, i) => {
-            const absX = Math.round(templateX + zone.x);
-            const absY = Math.round(templateY + zone.y);
-            const cropX = Math.max(0, absX);
-            const cropY = Math.max(0, absY);
+            const cropX = Math.max(0, zone.x);
+            const cropY = Math.max(0, zone.y);
             filterComplexParts.push(
-                `[c_blur_in_${i}]gblur=sigma=${zone.sigma}[c_blurred_full_${i}]`,
-                `[c_blurred_full_${i}]crop=w=${zone.w}:h=${zone.h}:x=${cropX}:y=${cropY}[c_blurred_crop_${i}]`
+                `[blur_in_${i}]gblur=sigma=${zone.sigma}[blurred_full_${i}]`,
+                `[blurred_full_${i}]crop=w='min(${zone.w},iw-${cropX})':h='min(${zone.h},ih-${cropY})':x=${cropX}:y=${cropY}[blurred_crop_${i}]`
             );
         });
 
         blurZones.forEach((zone, i) => {
-            const inStream  = i === 0 ? 'orig_composite' : `temp_comp_${i - 1}`;
-            const outStream = i === blurZones.length - 1 ? 'video_with_template' : `temp_comp_${i}`;
-            const absX = Math.round(templateX + zone.x);
-            const absY = Math.round(templateY + zone.y);
+            const inStream  = i === 0 ? 'orig_template' : `temp_tpl_${i - 1}`;
+            const outStream = i === blurZones.length - 1 ? 'blurred_template' : `temp_tpl_${i}`;
             filterComplexParts.push(
-                `[${inStream}][c_blurred_crop_${i}]overlay=x=${Math.max(0, absX)}:y=${Math.max(0, absY)}[${outStream}]`
+                `[${inStream}][blurred_crop_${i}]overlay=x=${Math.max(0, zone.x)}:y=${Math.max(0, zone.y)}[${outStream}]`
             );
         });
     }
 
-    // 4b. FX: color grading (eq), fade, vignette applied to composite
+    // Then composite blurred template onto main video
+    filterComplexParts.push(`[trimmed_main_video][blurred_template]overlay=x=${templateX}:y=${templateY}[video_with_template]`);
+
+    // 4. FX: color grading (eq), fade, vignette applied to composite
     const fx = CONFIG.fx || {};
     let fxStream = 'video_with_template';
 

@@ -18,7 +18,7 @@
   "settings": {
     "upload_timeout": 600,
     "delay_between_videos": 0,
-    "show_browser": false,
+    "show_browser": true,
     "is_close_browser": false
   }
 }

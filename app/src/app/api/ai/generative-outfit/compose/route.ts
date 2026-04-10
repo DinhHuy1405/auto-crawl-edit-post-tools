@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
         // Build command args
         const args = [
-          resolve(process.cwd(), '../../../edit-video/generative-outfit.mjs'),
+          resolve(process.cwd(), '../edit-video/generative-outfit.mjs'),
           '--mode', 'compose',
           '--model', resolvedModel,
           '--outfit', resolvedOutfit,

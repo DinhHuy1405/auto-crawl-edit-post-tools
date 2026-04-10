@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
         // Spawn generative-outfit.mjs with extract mode
         const proc = spawn('node', [
-          resolve(process.cwd(), '../../../edit-video/generative-outfit.mjs'),
+          resolve(process.cwd(), '../edit-video/generative-outfit.mjs'),
           '--mode', mode,
           '--input', sourceImagePath,
           '--output', `./temp-images/${runId}/${outName}`,
